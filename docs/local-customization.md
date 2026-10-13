@@ -3,6 +3,53 @@
 This fork keeps `origin` pointed at `ejunior6981/dyad`, `upstream` at
 `dyad-sh/dyad`, and customization work on `custom`.
 
+## Installed Windows build
+
+The locally built `1.19.1-local.1` release is installed through the normal
+Dyad Windows installer and uses the existing `%APPDATA%\dyad` data directory.
+Existing apps, chats, and messages were checked against a complete pre-install
+backup under `%LOCALAPPDATA%\dyad-local-backups`; database integrity passed.
+The active profile selects Qwen through LM Studio, full Agent mode, local
+SearXNG, and the verified ComfyUI workflow. Explorer, Implementer, and advanced
+subagent access are enabled. Automatic app updates are off so upstream binaries
+cannot overwrite the customization. Merge source updates and rebuild manually.
+
+Qwen 3.5 9B is loaded with a 32,768-token context and one parallel inference
+slot to leave memory available for ComfyUI and BGE-M3. The old 166K context
+with four slots caused a real image-render memory failure. The 32K configuration
+passed native tool calls plus real web search, embedding retrieval, and image
+generation checks. Its previous LM Studio model preset was backed up before
+changing the saved context default.
+
+To restore this model load after restarting LM Studio:
+
+```powershell
+lms load qwen/qwen3.5-9b --context-length 32768 --parallel 1 --gpu max --identifier qwen/qwen3.5-9b --yes
+```
+
+These are physical model context/concurrency settings, independent of Basic
+Agent's daily quota. LM Studio's [load command](https://lmstudio.ai/docs/cli/local-models/load)
+documents the context and GPU options.
+
+The local Windows build used the bundled Node-API binaries for `node-pty` and
+`mustardscript`, validated inside Electron 40; SQLite was rebuilt for Electron's
+ABI. On this machine, forcing a `node-pty` source rebuild fails because the
+Visual Studio toolchain lacks Spectre libraries. Build commands:
+
+```powershell
+npm rebuild electron-winstaller @vscode/ripgrep
+$electronVersion = (Get-Content node_modules/electron/package.json -Raw | ConvertFrom-Json).version
+node node_modules/@electron/rebuild/lib/cli.js --version $electronVersion --only better-sqlite3 --force
+$env:DYAD_SKIP_NATIVE_REBUILD = 'true'
+npm run make
+Remove-Item Env:DYAD_SKIP_NATIVE_REBUILD
+npm rebuild better-sqlite3
+```
+
+The last command restores SQLite for normal Node-based unit tests; packaged
+copies retain their Electron binary. If Electron or a native dependency
+changes, revalidate those native binaries before skipping the full rebuild.
+
 ## Local semantic code search
 
 Select your Qwen model through Dyad's LM Studio provider, start LM Studio's
