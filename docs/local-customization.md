@@ -158,6 +158,42 @@ someone else's job. Dyad stops waiting and does not save a cancelled result.
 ComfyUI and image checkpoints are separate installations; this repository
 does not download model weights automatically.
 
+For an existing Comfy Desktop installation on Windows, the included helper
+discovers its registered local instance and Python environment:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File local-services/comfyui/start.ps1
+```
+
+It starts a background server on port 8188 using existing models and user
+directories, with custom nodes disabled for the built-in Dyad workflow.
+To stop only the helper-owned server before launching the Desktop UI:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File local-services/comfyui/stop.ps1
+```
+
+The stop helper refuses to interrupt running or queued renders. Logs and the
+PID record are kept in the ignored `.runtime` directory. Comfy Desktop's own
+launch arguments should also use `--listen 127.0.0.1 --port 8188`.
+
+`workflow.sd15.json` is configured for the installed
+`v1-5-pruned-emaonly.ckpt` checkpoint and has been verified against the real
+ComfyUI server on an RTX 5060 Ti. Paste this file into the customized Dyad
+build's ComfyUI API workflow setting. The original upstream Dyad executable
+does not include this fork's local-image integration.
+
+An opt-in end-to-end render check exercises the actual ComfyUI queue, history,
+and image-download APIs through Dyad's adapter:
+
+```powershell
+$env:DYAD_LOCAL_IMAGE_SMOKE = 'true'
+npm test -- src/ipc/utils/local_image_generation.live.test.ts
+Remove-Item Env:DYAD_LOCAL_IMAGE_SMOKE
+```
+
+The test writes its PNG to `local-services/comfyui/.runtime/smoke-output.png`.
+
 SearXNG's JSON API and ComfyUI's workflow protocol follow the official
 [SearXNG API docs](https://docs.searxng.org/dev/search_api.html) and
 [ComfyUI API examples](https://github.com/Comfy-Org/ComfyUI/tree/master/script_examples).

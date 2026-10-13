@@ -122,4 +122,5 @@ storybook-static/
 eval-results/
 benchmark-results/
 local-services/searxng/.env
+local-services/comfyui/.runtime/
 benchmarks/code-explorer/repos/
