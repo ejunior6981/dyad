@@ -11,6 +11,14 @@ import { engineFetch } from "./engine_fetch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { isCodeExplorerReady } from "@/ipc/processors/code_explorer";
 import { readSettings } from "@/main/settings";
+// Custom fork: preserve hosted search while providing local retrieval.
+import {
+  getLocalCodeSearchConfig,
+  searchLocalCode,
+  usesLocalCodeSearch,
+} from "@/ipc/utils/local_code_search";
+import { getUserDataPath } from "@/paths/paths";
+import path from "node:path";
 import {
   filterDyadInternalFiles,
   resolveTargetAppPath,
@@ -39,6 +47,10 @@ const codeSearchResponseSchema = z.object({
 
 type CodeSearchArgs = z.infer<typeof codeSearchSchema>;
 
+function isLocalSearch(ctx: AgentContext): boolean {
+  return usesLocalCodeSearch(ctx.inferenceSettings ?? readSettings());
+}
+
 function buildCodeSearchAttributes(args: Partial<CodeSearchArgs>) {
   const queryAttr = args.query ? ` query="${escapeXmlAttr(args.query)}"` : "";
   const appNameAttr = args.app_name
@@ -62,6 +74,21 @@ async function callCodeSearch(
       app_name: params.app_name,
     })}>`,
   );
+
+  if (isLocalSearch(ctx)) {
+    const results = await searchLocalCode({
+      query: params.query,
+      files: params.filesContext,
+      appPath: resolveTargetAppPath(ctx, params.app_name),
+      cacheRoot: path.join(getUserDataPath(), "local-code-search"),
+      config: getLocalCodeSearchConfig(),
+      signal: ctx.abortSignal,
+    });
+    return results.map(
+      (result) =>
+        `${result.path}:${result.startLine}-${result.endLine}\n${result.text.slice(0, 500)}`,
+    );
+  }
 
   const response = await engineFetch(ctx, "/tools/code-search", {
     method: "POST",
@@ -104,12 +131,12 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
   description: DESCRIPTION,
   inputSchema: codeSearchSchema,
   defaultConsent: "always",
-  usesEngineEndpoint: true,
+  usesEngineEndpoint: (ctx) => !isLocalSearch(ctx),
 
   // Route root discovery through the Explorer sub-agent whenever it is
   // available. Inside Explorer, retain code_search as a fallback unless the
   // compiler-backed exploration surface is ready.
-  isEnabled: (ctx) => ctx.isDyadPro,
+  isEnabled: (ctx) => isLocalSearch(ctx) || ctx.isDyadPro,
   isDiscoverable: (ctx) => {
     if (!ctx.subagentThreadId && ctx.canUseExplorerSubagent) return false;
 
@@ -184,6 +211,7 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
       return "No relevant files found for the given query.";
     }
 
-    return `Found ${relevantFiles.length} relevant file(s):\n${resultText}`;
+    const resultKind = isLocalSearch(ctx) ? "code chunk(s)" : "file(s)";
+    return `Found ${relevantFiles.length} relevant ${resultKind}:\n${resultText}`;
   },
 };

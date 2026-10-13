@@ -535,10 +535,11 @@ export interface ToolDefinition<T = any> {
    */
   readonly requiresBlueprintApproval?: boolean;
   /**
+   * Custom fork: allow a context predicate for tools with local backends.
    * If true, this tool calls a Dyad Engine endpoint outside the main model
    * generation endpoint.
    */
-  readonly usesEngineEndpoint?: boolean;
+  readonly usesEngineEndpoint?: boolean | ((ctx: AgentContext) => boolean);
   execute: (args: T, ctx: AgentContext) => Promise<ToolResult>;
 
   /**

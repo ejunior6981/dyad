@@ -1,3 +1,4 @@
+// Custom fork: cover the local embedding route alongside upstream search.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   engineFetch: vi.fn(),
   readSettings: vi.fn(() => ({ enableCodeExplorer: false })),
   isCodeExplorerReady: vi.fn(() => false),
+  searchLocalCode: vi.fn(),
 }));
 
 const engineFetchMock = mocks.engineFetch;
@@ -33,6 +35,11 @@ vi.mock("@/main/settings", () => ({
 
 vi.mock("@/ipc/processors/code_explorer", () => ({
   isCodeExplorerReady: mocks.isCodeExplorerReady,
+}));
+
+vi.mock("@/ipc/utils/local_code_search", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/local_code_search")>()),
+  searchLocalCode: mocks.searchLocalCode,
 }));
 
 function mockEngineResponse(relevantFiles: string[]) {
@@ -98,6 +105,7 @@ describe("codeSearchTool", () => {
     engineFetchMock.mockReset();
     mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
     mocks.isCodeExplorerReady.mockReturnValue(false);
+    mocks.searchLocalCode.mockReset();
   });
 
   afterEach(async () => {
@@ -210,6 +218,43 @@ describe("codeSearchTool", () => {
   });
 
   describe("execute - app_name (referenced apps)", () => {
+    it("uses local embeddings for the per-turn LM Studio model without Pro", async () => {
+      mockContext.isDyadPro = false;
+      mockContext.inferenceSettings = {
+        selectedModel: { provider: "lmstudio", name: "qwen" },
+      } as any;
+      mocks.searchLocalCode.mockResolvedValue([
+        {
+          path: "current.ts",
+          startLine: 1,
+          endLine: 1,
+          text: "export const foo = 1;",
+          score: 1,
+        },
+      ]);
+      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
+      const result = await codeSearchTool.execute(
+        { query: "foo" },
+        mockContext,
+      );
+      expect(result).toContain("current.ts:1-1");
+      expect(engineFetchMock).not.toHaveBeenCalled();
+      expect(mocks.searchLocalCode).toHaveBeenCalledWith(
+        expect.objectContaining({ appPath: testDir }),
+      );
+    });
+
+    it("propagates local failure without falling back to a paid service", async () => {
+      mockContext.inferenceSettings = {
+        selectedModel: { provider: "lmstudio", name: "qwen" },
+      } as any;
+      mocks.searchLocalCode.mockRejectedValue(new Error("Start Ollama"));
+      await expect(
+        codeSearchTool.execute({ query: "foo" }, mockContext),
+      ).rejects.toThrow("Start Ollama");
+      expect(engineFetchMock).not.toHaveBeenCalled();
+    });
+
     it("routes to the referenced app's path when app_name matches", async () => {
       mockContext.referencedApps.set("other-app", otherAppDir);
       mockEngineResponse(["other.ts"]);

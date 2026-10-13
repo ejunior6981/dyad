@@ -1,3 +1,4 @@
+// Custom fork: cover local search availability and hosted-service filtering.
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,6 +11,36 @@ import {
 } from "./tool_definitions";
 
 describe("Build mode tool profile", () => {
+  it("allows local search without Pro and evaluates hosted billing per turn", () => {
+    const tool = TOOL_DEFINITIONS.find(
+      (entry) => entry.name === "code_search",
+    )!;
+    const ctx = {
+      isDyadPro: false,
+      inferenceSettings: {
+        selectedModel: { provider: "lmstudio", name: "qwen" },
+      },
+    } as import("./tools/types").AgentContext;
+    expect(
+      shouldIncludeTool(tool, ctx, {
+        freeModelMode: true,
+        basicAgentMode: true,
+      }),
+    ).toBe(true);
+    expect(shouldIncludeTool(tool, ctx, { readOnly: true })).toBe(true);
+    expect(shouldIncludeTool(tool, ctx, { planModeOnly: true })).toBe(true);
+    const hosted = {
+      ...ctx,
+      isDyadPro: true,
+      inferenceSettings: {
+        selectedModel: { provider: "openai", name: "test" },
+      },
+    } as import("./tools/types").AgentContext;
+    expect(shouldIncludeTool(tool, hosted, { freeModelMode: true })).toBe(
+      false,
+    );
+    expect(shouldIncludeTool(tool, hosted)).toBe(true);
+  });
   it("is an exact, engine-free, non-sub-agent allowlist", () => {
     expect(BUILD_MODE_TOOL_NAMES).toEqual([
       "write_file",

@@ -1,3 +1,4 @@
+// Custom fork: evaluate local search's hosted-service dependency per turn.
 import { withReferencedAppRead } from "./tools/referenced_app_read";
 import { recordShellReviewOutcome } from "./shell_review_history";
 import { runShellTool } from "./tools/run_shell";
@@ -764,7 +765,11 @@ export function shouldIncludeTool(
   if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
     return false;
   }
-  if (options.freeModelMode && tool.usesEngineEndpoint) {
+  const usesEngineEndpoint =
+    typeof tool.usesEngineEndpoint === "function"
+      ? tool.usesEngineEndpoint(ctx)
+      : tool.usesEngineEndpoint;
+  if (options.freeModelMode && usesEngineEndpoint) {
     return false;
   }
   if (tool.subagentOnly && !ctx.isDyadPro) {
