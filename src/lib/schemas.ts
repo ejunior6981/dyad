@@ -725,7 +725,7 @@ export function shouldShowPnpmMinimumReleaseAgeWarning(
 
 /**
  * Gets the effective default chat mode based on settings and Pro status.
- * - Explicit non-Agent defaults are always honored
+ * - Explicit Ask/Plan defaults are honored; local Build uses full Agent
  * - Pro users and local-model users default to Agent
  * - Non-Pro users default to Basic Agent; quota is enforced when sending
  * - Google-only users fall back to Build because free Gemini keys commonly
@@ -739,6 +739,13 @@ export function getEffectiveDefaultChatMode(
   const hasGoogleProviderSetup = isGoogleProviderSetup(settings, envVars);
   const hasNonGoogleProviderSetup = isNonGoogleProviderSetup(settings, envVars);
 
+  if (isLocalModelSelection(settings.selectedModel)) {
+    return getLocalAgentChatMode(
+      settings.selectedModel,
+      settings.defaultChatMode ?? "local-agent",
+    );
+  }
+
   if (settings.defaultChatMode && settings.defaultChatMode !== "local-agent") {
     return settings.defaultChatMode;
   }
@@ -747,6 +754,16 @@ export function getEffectiveDefaultChatMode(
   if (settings.defaultChatMode === "local-agent") return "local-agent";
   if (hasGoogleProviderSetup && !hasNonGoogleProviderSetup) return "build";
   return "local-agent";
+}
+
+/** Local writable chats always use the full tool-based Agent workflow. */
+export function getLocalAgentChatMode(
+  model: LargeLanguageModel | null | undefined,
+  mode: ChatMode,
+): ChatMode {
+  return isLocalModelSelection(model) && mode === "build"
+    ? "local-agent"
+    : mode;
 }
 
 /**

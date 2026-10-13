@@ -113,6 +113,32 @@ describe("useChatMode without an active chat", () => {
 });
 
 describe("useChatMode with an active chat", () => {
+  it.each([null, "build"] as const)(
+    "shows full Agent for a per-chat local model with stored mode %s",
+    (chatMode) => {
+      mocks.settings = makeSettings({ defaultChatMode: "build" });
+      const chat = {
+        id: 123,
+        appId: 1,
+        title: "",
+        messages: [],
+        referencedApps: [],
+        chatMode,
+        modelSelection: {
+          provider: "lmstudio",
+          name: "qwen3.5-9b",
+          effortLevel: "medium",
+        },
+      } satisfies Chat;
+      const { result } = renderHook(() => useChatMode(chat.id), {
+        wrapper: makeWrapper(false, chat),
+      });
+      expect(result.current.selectedMode).toBe("local-agent");
+      expect(result.current.effectiveDefaultMode).toBe("local-agent");
+      expect(result.current.storedChatMode).toBe(chatMode);
+    },
+  );
+
   beforeEach(() => {
     mocks.envVars = {};
     mocks.isQuotaExceeded = false;

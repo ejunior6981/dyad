@@ -9,7 +9,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ChatMode } from "@/lib/schemas";
-import { hasFullAgentAccess, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import {
+  hasFullAgentAccess,
+  getEffectiveDefaultChatMode,
+  isLocalModelSelection,
+} from "@/lib/schemas";
 import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import {
@@ -42,6 +46,7 @@ export function DefaultChatModeSelector() {
 
   const isProEnabled = hasFullAgentAccess(settings);
   const isDyadFreeSelected = isFreeProModel(settings.selectedModel);
+  const isLocalModel = isLocalModelSelection(settings.selectedModel);
   const effectiveDefault = getEffectiveDefaultChatMode(settings, envVars);
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
@@ -98,13 +103,18 @@ export function DefaultChatModeSelector() {
               </span>
             </div>
           </SelectItem>
-          <SelectItem value="build" disabled={isDyadFreeSelected}>
+          <SelectItem
+            value="build"
+            disabled={isDyadFreeSelected || isLocalModel}
+          >
             <div className="flex flex-col items-start">
               <span className="font-medium">Build</span>
               <span className="text-xs text-muted-foreground">
-                {isDyadFreeSelected
-                  ? "Use Agent with Dyad Free"
-                  : "Generate and edit code"}
+                {isLocalModel
+                  ? "Local models use full Agent mode"
+                  : isDyadFreeSelected
+                    ? "Use Agent with Dyad Free"
+                    : "Generate and edit code"}
               </span>
             </div>
           </SelectItem>

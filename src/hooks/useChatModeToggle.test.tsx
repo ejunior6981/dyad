@@ -59,6 +59,16 @@ function makeWrapper() {
 }
 
 describe("useChatModeToggle", () => {
+  it("skips legacy Build for local models", () => {
+    mocks.selectedModel = { provider: "lmstudio", name: "qwen3.5-9b" };
+    mocks.selectedMode = "plan";
+    const { result } = renderHook(() => useChatModeToggle(), {
+      wrapper: makeWrapper(),
+    });
+    act(() => result.current.toggleChatMode());
+    expect(mocks.setChatMode).toHaveBeenCalledWith("ask");
+  });
+
   beforeEach(() => {
     mocks.lastChatId = null;
     mocks.pathname = "/";

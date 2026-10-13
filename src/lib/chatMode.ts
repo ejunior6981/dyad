@@ -1,5 +1,6 @@
 import {
   getEffectiveDefaultChatMode,
+  getLocalAgentChatMode,
   migrateStoredChatMode,
   StoredChatModeSchema,
   type ChatMode,
@@ -41,5 +42,5 @@ export function resolveChatMode({
     return { mode: effectiveDefault };
   }
 
-  return { mode: chatMode };
+  return { mode: getLocalAgentChatMode(settings.selectedModel, chatMode) };
 }

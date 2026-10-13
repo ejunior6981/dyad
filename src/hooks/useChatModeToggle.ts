@@ -4,6 +4,7 @@ import { usePostHog } from "posthog-js/react";
 import {
   ChatModeSchema,
   hasFullAgentAccess,
+  isLocalModelSelection,
   type ChatMode,
 } from "../lib/schemas";
 import { useChatMode } from "./useChatMode";
@@ -72,7 +73,8 @@ export function useChatModeToggle() {
       canUseBasicAgent:
         hasFullAgentAccess(settings, selectedModel ?? settings.selectedModel) ||
         !isQuotaExceeded,
-      canUseBuild: !isFreeProModel(selectedModel),
+      canUseBuild:
+        !isFreeProModel(selectedModel) && !isLocalModelSelection(selectedModel),
     });
 
     if (routeChatId == null) {

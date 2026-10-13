@@ -13,7 +13,7 @@ import {
 import { useChatMode } from "@/hooks/useChatMode";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import type { ChatMode } from "@/lib/schemas";
-import { hasFullAgentAccess } from "@/lib/schemas";
+import { hasFullAgentAccess, isLocalModelSelection } from "@/lib/schemas";
 import { getChatModeDisplayName } from "@/lib/chatModeToast";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
@@ -46,6 +46,7 @@ export function ChatModeSelector() {
     useFreeAgentQuota(selectedModel);
   const isDyadFreeSelected = isFreeProModel(selectedModel);
   const buildUnavailableForDyadFree = isDyadFreeSelected;
+  const isLocalModel = isLocalModelSelection(selectedModel);
 
   useEffect(() => {
     if (
@@ -179,16 +180,21 @@ export function ChatModeSelector() {
               </div>
             </SelectItem>
           )}
-          <SelectItem value="build" disabled={buildUnavailableForDyadFree}>
+          <SelectItem
+            value="build"
+            disabled={buildUnavailableForDyadFree || isLocalModel}
+          >
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">
                 <Hammer size={14} className="text-muted-foreground" />
                 <span className="font-medium">Build</span>
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
-                {buildUnavailableForDyadFree
-                  ? "Use Agent, Ask, or Plan with Dyad Free"
-                  : "Generate and edit code"}
+                {isLocalModel
+                  ? "Local models use full Agent mode"
+                  : buildUnavailableForDyadFree
+                    ? "Use Agent, Ask, or Plan with Dyad Free"
+                    : "Generate and edit code"}
               </span>
             </div>
           </SelectItem>

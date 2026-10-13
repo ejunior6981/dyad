@@ -65,6 +65,10 @@ beforeEach(async () => {
   requests.length = 0;
   delayReview = false;
   await harness.db.delete(messages);
+  await harness.db
+    .update(chats)
+    .set({ chatMode: "local-agent" })
+    .where(eq(chats.id, harness.chatId));
 });
 afterAll(async () => {
   setModelClientFetchForTesting(undefined);
@@ -72,9 +76,18 @@ afterAll(async () => {
   await harness?.dispose();
 });
 
-it.each([false, true])(
-  "local Agent runs despite exhausted quota and old Pro enabled=%s",
-  async (enableDyadPro) => {
+it.each([
+  [false, "local-agent"],
+  [true, "local-agent"],
+  [false, "build"],
+  [true, "build"],
+] as const)(
+  "local full Agent runs with old Pro enabled=%s and saved mode=%s",
+  async (enableDyadPro, chatMode) => {
+    await harness.db
+      .update(chats)
+      .set({ chatMode })
+      .where(eq(chats.id, harness.chatId));
     writeSettings({
       enableDyadPro,
       providerSettings: { auto: { apiKey: { value: "old-pro-key" } } },
@@ -106,6 +119,10 @@ it.each([false, true])(
 
 it("runs the local Reviewer through its entitlement watcher without hosted inference", async () => {
   writeSettings({ enableDyadPro: false, proModelUsage: "pro" });
+  await harness.db
+    .update(chats)
+    .set({ chatMode: "build" })
+    .where(eq(chats.id, harness.chatId));
   const result = await harness.streamChat("tc=local-agent/dyad-write-angle");
   expect(result.eventsFor("chat:response:error")).toHaveLength(0);
   const source = result.messages

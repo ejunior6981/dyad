@@ -21,6 +21,18 @@ function makeFreeProSettings(
 }
 
 describe("resolveChatModeForTurn", () => {
+  it("routes local Build requests through full Agent", async () => {
+    await expect(
+      resolveChatModeForTurn({
+        requestedChatMode: "build",
+        storedChatMode: "build",
+        settings: makeFreeProSettings({
+          selectedModel: { provider: "lmstudio", name: "qwen3.5-9b" },
+        }),
+      }),
+    ).resolves.toMatchObject({ mode: "local-agent" });
+  });
+
   it("disables hosted billing in the local turn snapshot without editing stored settings", async () => {
     const settings = makeFreeProSettings({
       selectedModel: { provider: "lmstudio", name: "qwen" },

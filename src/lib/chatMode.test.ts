@@ -14,6 +14,33 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
 }
 
 describe("chat mode resolution", () => {
+  it.each(["lmstudio", "ollama"])(
+    "activates full Agent for %s Build defaults and saved chats",
+    (provider) => {
+      const settings = makeSettings({
+        selectedModel: { provider, name: "qwen3.5-9b" },
+        defaultChatMode: "build",
+      });
+      expect(getEffectiveDefaultChatMode(settings, {})).toBe("local-agent");
+      for (const storedChatMode of [null, "build", "agent", "local-agent"]) {
+        expect(
+          resolveChatMode({ storedChatMode, settings, envVars: {} }).mode,
+        ).toBe("local-agent");
+      }
+      for (const mode of ["ask", "plan"] as const) {
+        expect(
+          resolveChatMode({ storedChatMode: mode, settings, envVars: {} }).mode,
+        ).toBe(mode);
+        expect(
+          getEffectiveDefaultChatMode(
+            { ...settings, defaultChatMode: mode },
+            {},
+          ),
+        ).toBe(mode);
+      }
+    },
+  );
+
   it("migrates deprecated agent mode to build", () => {
     expect(normalizeStoredChatMode("agent")).toBe("build");
   });

@@ -7,6 +7,7 @@ import { ipc, type Chat, type UpdateChatParams } from "@/ipc/types";
 import type { ChatSummary, ModelSelection } from "@/lib/schemas";
 import {
   getEffectiveDefaultChatMode,
+  getLocalAgentChatMode,
   type ChatMode,
   type UserSettings,
 } from "@/lib/schemas";
@@ -44,16 +45,25 @@ export function useChatMode(chatId: number | null | undefined) {
   const effectiveDefaultMode = settings
     ? getFreeProCompatibleChatMode(
         selectedModel ?? settings.selectedModel,
-        getEffectiveDefaultChatMode(settings, envVars),
+        getEffectiveDefaultChatMode(
+          {
+            ...settings,
+            selectedModel: selectedModel ?? settings.selectedModel,
+          },
+          envVars,
+        ),
       )
     : "build";
 
   const storedChatMode = chatQuery.data?.chatMode ?? null;
-  const selectedMode = activeChatId
-    ? (storedChatMode ?? effectiveDefaultMode)
-    : hasManuallySelectedChatMode
-      ? (settings?.selectedChatMode ?? effectiveDefaultMode)
-      : effectiveDefaultMode;
+  const selectedMode = getLocalAgentChatMode(
+    selectedModel,
+    activeChatId
+      ? (storedChatMode ?? effectiveDefaultMode)
+      : hasManuallySelectedChatMode
+        ? (settings?.selectedChatMode ?? effectiveDefaultMode)
+        : effectiveDefaultMode,
+  );
 
   const updateChatSelectionMutation = useMutation<
     void,
