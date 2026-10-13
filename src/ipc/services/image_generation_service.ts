@@ -20,6 +20,10 @@ import log from "electron-log";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
 import { ensureDyadGitignored } from "../handlers/gitignoreUtils";
+import {
+  generateLocalImage,
+  usesLocalImageGeneration,
+} from "../utils/local_image_generation";
 
 const logger = log.scope("image_generation_service");
 
@@ -146,8 +150,9 @@ export class ImageGenerationService {
   ) {
     const settings = readSettings();
     const apiKey = settings.providerSettings?.auto?.apiKey?.value;
+    const local = usesLocalImageGeneration(settings);
 
-    if (!apiKey) {
+    if (!local && !apiKey) {
       throw new DyadError(
         "Dyad Pro API key is required for image generation",
         DyadErrorKind.Auth,
@@ -169,25 +174,33 @@ export class ImageGenerationService {
     const requestId = params.requestId;
     const timeoutId = setTimeout(
       () => controller.abort(),
-      IMAGE_GENERATION_TIMEOUT_MS,
+      local ? 600_000 : IMAGE_GENERATION_TIMEOUT_MS,
     );
 
     let response: Response;
     try {
-      response = await fetch(`${getDyadEngineBaseUrl()}/images/generations`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "X-Dyad-Request-Id": requestId,
-        },
-        body: JSON.stringify({
-          prompt: fullPrompt,
-          model: "dyad/image-gen",
-        }),
-        signal: controller.signal,
-      });
+      response = local
+        ? Response.json({
+            created: Math.floor(Date.now() / 1000),
+            data: [
+              await generateLocalImage(fullPrompt, settings, controller.signal),
+            ],
+          })
+        : await fetch(`${getDyadEngineBaseUrl()}/images/generations`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+              "X-Dyad-Request-Id": requestId,
+            },
+            body: JSON.stringify({
+              prompt: fullPrompt,
+              model: "dyad/image-gen",
+            }),
+            signal: controller.signal,
+          });
     } catch (error) {
+      if (local && isDyadError(error)) throw error;
       if (error instanceof Error && error.name === "AbortError") {
         throw new DyadError(
           "Image generation cancelled or timed out.",

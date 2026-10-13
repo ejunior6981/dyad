@@ -10,6 +10,11 @@ import {
   escapeXmlContent,
 } from "./types";
 import { engineFetch } from "./engine_fetch";
+import { readSettings } from "@/main/settings";
+import {
+  generateLocalImage,
+  usesLocalImageGeneration,
+} from "@/ipc/utils/local_image_generation";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { ImageGenerationApiResponseSchema } from "@/ipc/types/image_generation";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -122,9 +127,15 @@ export const generateImageTool: ToolDefinition<
   inputSchema: generateImageSchema,
   defaultConsent: "always",
   modifiesState: true,
-  usesEngineEndpoint: true,
+  usesEngineEndpoint: (ctx) =>
+    !usesLocalImageGeneration(ctx.inferenceSettings ?? readSettings()),
 
-  isEnabled: (ctx) => ctx.isDyadPro,
+  isEnabled: (ctx) => {
+    const settings = ctx.inferenceSettings ?? readSettings();
+    return usesLocalImageGeneration(settings)
+      ? Boolean(settings.comfyuiWorkflow?.trim())
+      : ctx.isDyadPro;
+  },
 
   getConsentPreview: (args) => `Generate image: "${args.prompt}"`,
 
@@ -145,8 +156,12 @@ export const generateImageTool: ToolDefinition<
     );
 
     try {
-      const imageData = await callGenerateImage(args.prompt, ctx);
+      const settings = ctx.inferenceSettings ?? readSettings();
+      const imageData = usesLocalImageGeneration(settings)
+        ? await generateLocalImage(args.prompt, settings, ctx.abortSignal)
+        : await callGenerateImage(args.prompt, ctx);
 
+      ctx.abortSignal?.throwIfAborted();
       const relativePath = await saveGeneratedImage(imageData, ctx.appPath);
 
       ctx.onXmlComplete(

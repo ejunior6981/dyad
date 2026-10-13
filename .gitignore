@@ -121,4 +121,5 @@ storybook-static/
 # Eval framework — run results
 eval-results/
 benchmark-results/
+local-services/searxng/.env
 benchmarks/code-explorer/repos/

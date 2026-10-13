@@ -11,6 +11,20 @@ import { ImageGeneratorDialog } from "./ImageGeneratorDialog";
 
 const mocks = vi.hoisted(() => ({
   start: vi.fn(),
+  local: false,
+  budgetOptions: vi.fn(),
+}));
+
+vi.mock("@/hooks/useSettings", () => ({
+  useSettings: () => ({
+    settings: {
+      selectedModel: {
+        provider: mocks.local ? "lmstudio" : "auto",
+        name: "test",
+      },
+      comfyuiWorkflow: mocks.local ? "configured" : "",
+    },
+  }),
 }));
 
 function deferred<T>() {
@@ -66,10 +80,13 @@ vi.mock("@/hooks/useGenerateImage", () => ({
   useGenerateImage: () => ({ start: mocks.start }),
 }));
 vi.mock("@/hooks/useUserBudgetInfo", () => ({
-  useUserBudgetInfo: () => ({
-    userBudget: { remaining: 1 },
-    isLoadingUserBudget: false,
-  }),
+  useUserBudgetInfo: (options: unknown) => {
+    mocks.budgetOptions(options);
+    return {
+      userBudget: mocks.local ? null : { remaining: 1 },
+      isLoadingUserBudget: false,
+    };
+  },
 }));
 vi.mock("./ProBanner", () => ({ AiAccessBanner: () => null }));
 vi.mock("./AppSearchSelect", () => ({ AppSearchSelect: () => null }));
@@ -77,6 +94,18 @@ vi.mock("./AppSearchSelect", () => ({ AppSearchSelect: () => null }));
 describe("ImageGeneratorDialog", () => {
   beforeEach(() => {
     mocks.start.mockReset();
+    mocks.local = false;
+    mocks.budgetOptions.mockClear();
+  });
+
+  it("shows image controls for configured local models without fetching a paid budget", () => {
+    mocks.local = true;
+    render(
+      <ImageGeneratorDialog open defaultAppId={7} onOpenChange={vi.fn()} />,
+    );
+    expect(screen.getByLabelText("Prompt")).toBeTruthy();
+    expect(mocks.budgetOptions).toHaveBeenCalledWith({ enabled: false });
+    expect(screen.queryByText("Pro-only feature")).toBeNull();
   });
 
   it("keeps the dialog and prompt open when submit admission is rejected", async () => {

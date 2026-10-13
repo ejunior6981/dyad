@@ -7,6 +7,11 @@ import {
   escapeXmlContent,
 } from "./types";
 import { engineFetch } from "./engine_fetch";
+import { readSettings } from "@/main/settings";
+import {
+  searchLocalWeb,
+  usesLocalWebSearch,
+} from "@/ipc/utils/local_web_search";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("web_search");
@@ -176,17 +181,26 @@ export const webSearchTool: ToolDefinition<z.infer<typeof webSearchSchema>> = {
   description: DESCRIPTION,
   inputSchema: webSearchSchema,
   defaultConsent: "ask",
-  usesEngineEndpoint: true,
+  usesEngineEndpoint: (ctx) =>
+    !usesLocalWebSearch(ctx.inferenceSettings ?? readSettings()),
 
   // Requires Dyad Pro engine API
-  isEnabled: (ctx) => ctx.isDyadPro,
+  isEnabled: (ctx) => {
+    const settings = ctx.inferenceSettings ?? readSettings();
+    return usesLocalWebSearch(settings)
+      ? settings.enableLocalWebSearch !== false
+      : ctx.isDyadPro;
+  },
 
   getConsentPreview: (args) => `Search the web: "${args.query}"`,
 
   execute: async (args, ctx: AgentContext) => {
     logger.log(`Executing web search: ${args.query}`);
 
-    const result = await callWebSearchSSE(args.query, ctx);
+    const settings = ctx.inferenceSettings ?? readSettings();
+    const result = usesLocalWebSearch(settings)
+      ? await searchLocalWeb(args.query, settings, ctx.abortSignal)
+      : await callWebSearchSSE(args.query, ctx);
 
     if (!result) {
       throw new DyadError(

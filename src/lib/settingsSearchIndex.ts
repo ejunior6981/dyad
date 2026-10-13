@@ -12,6 +12,8 @@ export const SECTION_IDS = {
 } as const;
 
 export const SETTING_IDS = {
+  localImageGeneration: "setting-local-image-generation",
+  localWebSearch: "setting-local-web-search",
   theme: "setting-theme",
   zoom: "setting-zoom",
   autoUpdate: "setting-auto-update",
@@ -71,6 +73,32 @@ type SearchableSettingItem = {
 };
 
 export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
+  {
+    id: SETTING_IDS.localImageGeneration,
+    label: "Local image generation",
+    description:
+      "Configure ComfyUI and an API workflow for local image generation",
+    keywords: [
+      "comfyui",
+      "image",
+      "generation",
+      "workflow",
+      "local",
+      "stable diffusion",
+      "flux",
+    ],
+    sectionId: SECTION_IDS.ai,
+    sectionLabel: "AI",
+  },
+  {
+    id: SETTING_IDS.localWebSearch,
+    label: "Local web search",
+    description:
+      "Configure the local SearXNG search service for LM Studio and Ollama agents",
+    keywords: ["searxng", "search", "web", "local", "internet", "localhost"],
+    sectionId: SECTION_IDS.ai,
+    sectionLabel: "AI",
+  },
   // General Settings
   {
     id: SETTING_IDS.theme,

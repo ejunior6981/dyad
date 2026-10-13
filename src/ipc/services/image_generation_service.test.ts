@@ -11,6 +11,9 @@ import {
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
 import { ImageGenerationService } from "./image_generation_service";
+import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+
+const localOptions = vi.hoisted(() => ({ enabled: false }));
 
 vi.mock("@/main/settings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/main/settings")>();
@@ -19,6 +22,19 @@ vi.mock("@/main/settings", async (importOriginal) => {
     readSettings: () => ({
       ...actual.DEFAULT_SETTINGS,
       providerSettings: { auto: { apiKey: { value: "test-api-key" } } },
+      ...(localOptions.enabled
+        ? {
+            selectedModel: { provider: "lmstudio", name: "qwen" },
+            providerSettings: {},
+            comfyuiWorkflow: JSON.stringify({
+              "1": {
+                class_type: "CLIPTextEncode",
+                inputs: { text: "{{prompt}}" },
+              },
+              "2": { class_type: "SaveImage", inputs: {} },
+            }),
+          }
+        : {}),
     }),
   };
 });
@@ -66,6 +82,7 @@ describe("ImageGenerationService", () => {
   let service: ImageGenerationService;
 
   beforeEach(() => {
+    localOptions.enabled = false;
     fs.rmSync(tempBase, { recursive: true, force: true });
     harness = setupHandlerTestHarness();
     service = new ImageGenerationService();
@@ -96,6 +113,39 @@ describe("ImageGenerationService", () => {
   async function cancel(requestId: string): Promise<{ cancelled: boolean }> {
     return { cancelled: service.cancel(requestId) };
   }
+
+  it("generates and saves a ComfyUI image without a Pro API key", async () => {
+    localOptions.enabled = true;
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ prompt_id: "local1" }))
+      .mockResolvedValueOnce(
+        Response.json({
+          local1: {
+            status: { completed: true },
+            outputs: {
+              "2": {
+                images: [
+                  { filename: "test.png", subfolder: "", type: "output" },
+                ],
+              },
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(png));
+    vi.stubGlobal("fetch", fetchMock);
+    await generate("local-image");
+    expect(
+      fetchMock.mock.calls.every(([url]) =>
+        url.startsWith("http://127.0.0.1:8188/"),
+      ),
+    ).toBe(true);
+    const media = path.join(tempBase, "test-app", DYAD_MEDIA_DIR_NAME);
+    const [filename] = fs.readdirSync(media);
+    expect(fs.readFileSync(path.join(media, filename))).toEqual(png);
+  });
 
   it("rejects admission while an app deletion or reset fence is active", () => {
     service.beginAppDeletion(appId);

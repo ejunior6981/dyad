@@ -2,6 +2,8 @@ import { ShellExperimentSwitch } from "@/components/ShellExperimentSwitch";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
+import { LocalWebSearchSettings } from "@/components/LocalWebSearchSettings";
+import { LocalImageGenerationSettings } from "@/components/LocalImageGenerationSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { ipc } from "@/ipc/types";
 import { showSuccess, showError } from "@/lib/toast";
@@ -590,6 +592,12 @@ export function AISettings() {
     >
       <div id={SETTING_IDS.maxToolCallSteps}>
         <MaxToolCallStepsSelector />
+      </div>
+      <div id={SETTING_IDS.localWebSearch}>
+        <LocalWebSearchSettings />
+      </div>
+      <div id={SETTING_IDS.localImageGeneration}>
+        <LocalImageGenerationSettings />
       </div>
 
       <div id={SETTING_IDS.contextCompaction} className="space-y-1.5">

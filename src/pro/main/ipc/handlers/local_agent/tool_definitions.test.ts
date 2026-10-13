@@ -11,6 +11,34 @@ import {
 } from "./tool_definitions";
 
 describe("Build mode tool profile", () => {
+  it("exposes configured local image generation only in writable mode", () => {
+    const tool = TOOL_DEFINITIONS.find(
+      (entry) => entry.name === "generate_image",
+    )!;
+    const ctx = {
+      isDyadPro: false,
+      inferenceSettings: {
+        selectedModel: { provider: "lmstudio", name: "qwen" },
+        comfyuiWorkflow: "configured",
+      },
+    } as import("./tools/types").AgentContext;
+    expect(shouldIncludeTool(tool, ctx, { freeModelMode: true })).toBe(true);
+    expect(shouldIncludeTool(tool, ctx, { readOnly: true })).toBe(false);
+    expect(shouldIncludeTool(tool, ctx, { planModeOnly: true })).toBe(false);
+    const search = TOOL_DEFINITIONS.find(
+      (entry) => entry.name === "web_search",
+    )!;
+    expect(shouldIncludeTool(search, ctx, { readOnly: true })).toBe(true);
+    expect(
+      shouldIncludeTool(search, {
+        ...ctx,
+        inferenceSettings: {
+          ...ctx.inferenceSettings!,
+          enableLocalWebSearch: false,
+        },
+      }),
+    ).toBe(false);
+  });
   it("enables local subagent tools without exposing hosted image and web services", () => {
     const ctx = {
       isDyadPro: false,
@@ -28,9 +56,11 @@ describe("Build mode tool profile", () => {
     expect(shouldIncludeTool(tool("list_agents"), ctx)).toBe(true);
     expect(shouldIncludeTool(tool("search_chats"), ctx)).toBe(true);
     expect(shouldIncludeTool(tool("read_chat"), ctx)).toBe(true);
+    expect(
+      shouldIncludeTool(tool("web_search"), ctx, { freeModelMode: true }),
+    ).toBe(true);
     for (const name of [
       "generate_image",
-      "web_search",
       "web_fetch",
       "web_crawl",
       "explore_chat_history",

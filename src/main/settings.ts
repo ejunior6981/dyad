@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { DEFAULT_SEARXNG_URL } from "@/shared/local_web_search";
+import { DEFAULT_COMFYUI_URL } from "@/shared/local_image_generation";
 import path from "node:path";
 import { getUserDataPath } from "../paths/paths";
 import {
@@ -45,6 +47,9 @@ const logger = log.scope("settings");
 // (Exported for the unit-test harness; production code should go through
 // readSettings instead of using this directly.)
 export const DEFAULT_SETTINGS: UserSettings = {
+  comfyuiBaseUrl: DEFAULT_COMFYUI_URL,
+  enableLocalWebSearch: true,
+  searxngBaseUrl: DEFAULT_SEARXNG_URL,
   chatgptFastMode: false,
   selectedModel: {
     name: "auto",

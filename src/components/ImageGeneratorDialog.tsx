@@ -23,6 +23,8 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { AiAccessBanner } from "./ProBanner";
+import { useSettings } from "@/hooks/useSettings";
+import { isLocalModelSelection } from "@/lib/schemas";
 import { AppSearchSelect } from "./AppSearchSelect";
 import type { ImageThemeMode } from "@/ipc/types";
 
@@ -76,9 +78,12 @@ export function ImageGeneratorDialog({
   const submissionAttemptRef = useRef(0);
 
   const { apps } = useLoadApps();
+  const { settings } = useSettings();
+  const isLocal = isLocalModelSelection(settings?.selectedModel);
+  const localReady = isLocal && Boolean(settings?.comfyuiWorkflow?.trim());
   const { start } = useGenerateImage();
   const { userBudget, isLoadingUserBudget: isBudgetLoading } =
-    useUserBudgetInfo();
+    useUserBudgetInfo({ enabled: !isLocal });
 
   // Sync defaultAppId only when dialog opens (not while already open)
   useEffect(() => {
@@ -152,11 +157,16 @@ export function ImageGeneratorDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {isBudgetLoading ? (
+          {isLocal && !localReady ? (
+            <p className="text-sm text-muted-foreground">
+              Configure a ComfyUI API workflow in Settings → AI to generate
+              images locally.
+            </p>
+          ) : !isLocal && isBudgetLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : !userBudget ? (
+          ) : !localReady && !userBudget ? (
             <div className="space-y-4">
               <div className="flex flex-col items-center justify-center py-8 px-4 border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
                 <Lock className="h-12 w-12 text-muted-foreground mb-4" />
@@ -254,7 +264,10 @@ export function ImageGeneratorDialog({
             <Button
               onClick={handleGenerate}
               disabled={
-                isSubmitting || !prompt.trim() || effectiveTargetAppId === null
+                isSubmitting ||
+                !prompt.trim() ||
+                effectiveTargetAppId === null ||
+                (isLocal && !localReady)
               }
             >
               {isSubmitting ? "Starting..." : "Generate"}

@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import { createServer } from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { chats, messages } from "@/db/schema";
 import { writeSettings } from "@/main/settings";
 import {
@@ -65,6 +69,7 @@ beforeEach(async () => {
   requests.length = 0;
   delayReview = false;
   await harness.db.delete(messages);
+  writeSettings({ comfyuiWorkflow: "" });
   await harness.db
     .update(chats)
     .set({ chatMode: "local-agent" })
@@ -111,11 +116,111 @@ it.each([
     );
     expect(tools).toContain("spawn_agent");
     expect(tools).toContain("list_agents");
-    expect(tools).not.toContain("web_search");
+    expect(tools).toContain("web_search");
     expect(tools).not.toContain("generate_image");
   },
   30_000,
 );
+
+it("executes search and image tools against local HTTP services in a real Agent turn", async () => {
+  const serviceRequests: string[] = [];
+  let queuedWorkflow:
+    | Record<string, { inputs: Record<string, unknown> }>
+    | undefined;
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGN8AAAAASUVORK5CYII=",
+    "base64",
+  );
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url!, "http://localhost");
+    serviceRequests.push(url.pathname);
+    res.setHeader("Content-Type", "application/json");
+    if (url.pathname === "/search") {
+      res.end(
+        JSON.stringify({
+          results: [
+            {
+              title: "React",
+              url: "https://react.dev/",
+              content: "Official React documentation",
+            },
+          ],
+        }),
+      );
+    } else if (url.pathname === "/prompt") {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      queuedWorkflow = JSON.parse(Buffer.concat(chunks).toString()).prompt;
+      res.end(JSON.stringify({ prompt_id: "local-job" }));
+    } else if (url.pathname === "/history/local-job") {
+      res.end(
+        JSON.stringify({
+          "local-job": {
+            status: { completed: true },
+            outputs: {
+              "2": {
+                images: [
+                  { filename: "image.png", subfolder: "", type: "output" },
+                ],
+              },
+            },
+          },
+        }),
+      );
+    } else if (url.pathname === "/view") {
+      res.setHeader("Content-Type", "image/png");
+      res.end(png);
+    } else {
+      res.statusCode = 404;
+      res.end();
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as import("node:net").AddressInfo).port;
+  try {
+    writeSettings({
+      enableDyadPro: false,
+      searxngBaseUrl: `http://127.0.0.1:${port}`,
+      comfyuiBaseUrl: `http://127.0.0.1:${port}`,
+      comfyuiWorkflow: JSON.stringify({
+        "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } },
+        "2": { class_type: "SaveImage", inputs: {} },
+      }),
+      agentToolConsents: { web_search: "always", generate_image: "always" },
+    });
+    const result = await harness.streamChat("tc=local-agent/local-services");
+    expect(result.eventsFor("chat:response:error")).toHaveLength(0);
+    expect(serviceRequests).toEqual([
+      "/search",
+      "/prompt",
+      "/history/local-job",
+      "/view",
+    ]);
+    expect(queuedWorkflow?.["1"].inputs.text).toBe(
+      'An illustration of a "tree"',
+    );
+    const content = result.messages
+      .map((message) => message.content)
+      .join("\n");
+    expect(content).toContain("https://react.dev/");
+    const mediaDir = path.join(harness.appDir, DYAD_MEDIA_DIR_NAME);
+    const images = (await fs.readdir(mediaDir)).filter(
+      (name) => name.startsWith("generated-") && name.endsWith(".png"),
+    );
+    expect(images).toHaveLength(1);
+    expect(await fs.readFile(path.join(mediaDir, images[0]))).toEqual(png);
+    expect(h.credits).not.toHaveBeenCalled();
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    writeSettings({
+      searxngBaseUrl: "http://127.0.0.1:8080",
+      comfyuiBaseUrl: "http://127.0.0.1:8188",
+      comfyuiWorkflow: "",
+    });
+  }
+}, 30_000);
 
 it("runs the local Reviewer through its entitlement watcher without hosted inference", async () => {
   writeSettings({ enableDyadPro: false, proModelUsage: "pro" });

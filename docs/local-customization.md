@@ -11,8 +11,8 @@ and embedding model can run in separate applications.
 
 In Agent, Ask, or Plan mode, the `code_search` tool now uses local embeddings
 when the effective model for that chat is from LM Studio or Ollama. It does
-not require a Dyad Pro key or call Dyad Engine. Build mode retains its
-upstream tool inventory and does not expose semantic search.
+not require a Dyad Pro key or call Dyad Engine. Local Build selections resolve
+to full Agent automatically, including previously saved Build chats.
 
 Optional `.env` configuration:
 
@@ -105,5 +105,68 @@ git merge --ff-only sync/upstream-YYYY-MM-DD
 git push origin custom
 ```
 
-Future work: local SearXNG search and page extraction, then ComfyUI image
-generation and replacements for the remaining hosted tools.
+## Local web search
+
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File local-services/searxng/start.ps1`
+from this repository. The script starts SearXNG through Docker, generates an
+ignored local secret, and binds the service to `http://127.0.0.1:8080`.
+Docker Desktop must be running. Stop it with
+`docker compose --project-directory local-services/searxng -f local-services/searxng/compose.yaml down`.
+The Compose file pins the tested container image by digest. To update SearXNG,
+pull a newer official image and replace the digest after checking JSON searches.
+
+Settings → AI contains the Local web search switch and SearXNG URL.
+Local Agent's `web_search` uses this service automatically with LM Studio or
+Ollama, including Explorer subagents. It returns source URLs and snippets for
+the model to cite. Queries require an internet connection and are forwarded
+by SearXNG to search engines; no subscription or API key is required.
+The checked-in configuration enables JSON results and Google/Bing. Other
+engines can be configured in `local-services/searxng/settings.yml`.
+CAPTCHA, rate limits, and network failures can still affect upstream engines.
+This is snippet search; the hosted `web_fetch` and `web_crawl` tools are
+not enabled for local models yet.
+
+The search endpoint accepts only localhost URLs, rejects redirects, bounds
+response size/results, and honors cancellation. Failure never falls back to
+Dyad's paid engine. The consent setting still applies to web searches.
+
+## Local image generation
+
+Start ComfyUI on `http://127.0.0.1:8188` with a locally installed image model.
+In ComfyUI, export the working workflow using **Export (API)**. Replace the
+positive prompt's text value with exactly `{{prompt}}`; optionally replace
+its seed with `{{seed}}` to randomize each generation. Keep a `SaveImage`
+output. Paste the JSON into Settings → AI → ComfyUI API workflow and save.
+The URL can also be changed to another localhost port.
+
+`local-services/comfyui/workflow.example.json` is a starter checkpoint
+workflow. Set its `ckpt_name` to your installed checkpoint's filename before
+using it. Use a workflow that already works in ComfyUI for Flux or SDXL.
+The integration accepts an explicit allowlist of built-in local model nodes;
+hosted API nodes and custom nodes are rejected. Clear the saved workflow to
+disable the image tool.
+
+Both the Agent's `generate_image` tool and the Generate Image dialog use
+ComfyUI with a local model selected. Generated PNGs are saved in the app's
+`.dyad/media` directory through the existing image flows. The dialog applies
+the selected visual style to the prompt. No Pro key or credit check is used.
+Generation has a ten-minute deadline and downloads are size-limited.
+Cancelling removes this request from ComfyUI's pending queue; an already
+running render may finish in ComfyUI because a global interrupt could cancel
+someone else's job. Dyad stops waiting and does not save a cancelled result.
+
+ComfyUI and image checkpoints are separate installations; this repository
+does not download model weights automatically.
+
+SearXNG's JSON API and ComfyUI's workflow protocol follow the official
+[SearXNG API docs](https://docs.searxng.org/dev/search_api.html) and
+[ComfyUI API examples](https://github.com/Comfy-Org/ComfyUI/tree/master/script_examples).
+
+Verification:
+
+```powershell
+npm test -- src/ipc/utils/local_web_search.test.ts src/ipc/utils/local_image_generation.test.ts src/ipc/handlers/chat_stream_local_agent.integration.test.ts
+$env:DYAD_LOCAL_WEB_SEARCH_SMOKE = 'true'
+npm test -- src/ipc/utils/local_web_search.live.test.ts
+Remove-Item Env:DYAD_LOCAL_WEB_SEARCH_SMOKE
+```
