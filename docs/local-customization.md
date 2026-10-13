@@ -20,6 +20,9 @@ with four slots caused a real image-render memory failure. The earlier 32K
 configuration was too small for a full Agent request (35,230 prompt tokens).
 The 64K trial accepted a 36K prompt but left insufficient Windows committed
 memory for the embedding service, so the saved configuration uses 48K.
+The ComfyUI launcher also uses low VRAM mode, reserves 8 GB for other
+applications, and disables dynamic allocation, async offloading, and node
+caching to reduce memory pressure while Dyad and the models are running.
 Dyad now reads LM Studio's actual loaded context instead of assuming 128K,
 uses a 75% local compaction threshold, and estimates system instructions,
 tool schemas, and history before the first request and subsequent steps.

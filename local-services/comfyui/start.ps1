@@ -36,7 +36,8 @@ function Quote-Argument([string]$value) {
 $launchArgs = @('-s', (Quote-Argument $mainFile), '--listen', '127.0.0.1', '--port', '8188',
     '--base-directory', (Quote-Argument $baseDir), '--user-directory', (Quote-Argument (Join-Path $baseDir 'user')),
     '--input-directory', (Quote-Argument (Join-Path $baseDir 'input')), '--output-directory', (Quote-Argument (Join-Path $baseDir 'output')),
-    '--disable-all-custom-nodes')
+    '--disable-all-custom-nodes', '--lowvram', '--reserve-vram', '8',
+    '--disable-dynamic-vram', '--disable-async-offload', '--disable-cuda-malloc', '--cache-none')
 $modelConfig = Join-Path $desktopDir ('instance-model-paths\' + $instance.id + '.yaml')
 if (Test-Path -LiteralPath $modelConfig) { $launchArgs += @('--extra-model-paths-config', (Quote-Argument $modelConfig)) }
 $process = Start-Process -FilePath $python -ArgumentList ($launchArgs -join ' ') -WorkingDirectory $sourceDir -WindowStyle Hidden -PassThru `
