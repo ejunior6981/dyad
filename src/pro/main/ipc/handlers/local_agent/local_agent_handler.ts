@@ -66,6 +66,9 @@ import {
 } from "@/ipc/utils/stream_text_utils";
 import {
   estimateToolResultTokens,
+  estimateAgentRequestTokens,
+  getContextWindow,
+  shouldTriggerCompaction,
   getMaxTokens,
   getTemperature,
 } from "@/ipc/utils/token_utils";
@@ -1269,6 +1272,35 @@ export async function handleLocalAgentStream(
       ctx.refreshShellReviewTools();
     }
 
+    const localContextWindow =
+      selectedModel.provider === "lmstudio"
+        ? await getContextWindow(selectedModel)
+        : undefined;
+    // A long imported/existing chat can overflow on its very first request,
+    // before onStepFinish has any usage with which to mark compaction.
+    if (
+      localContextWindow &&
+      !messageOverride &&
+      settings.enableContextCompaction !== false
+    ) {
+      const initialTokens = await estimateAgentRequestTokens(
+        systemPrompt,
+        buildChatMessageHistory(chat.messages, {
+          inferenceSource: currentInferenceSource() ?? undefined,
+        }),
+        allTools,
+      );
+      if (
+        shouldTriggerCompaction(
+          initialTokens,
+          localContextWindow,
+          selectedModel.provider,
+        )
+      ) {
+        await maybePerformPendingCompaction({ force: true });
+      }
+    }
+
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
     // If a compaction summary exists, only include messages from that point onward
@@ -1482,6 +1514,28 @@ export async function handleLocalAgentStream(
             // We track the insertion index so messages appear at the same position each step.
             prepareStep: async (options) => {
               let stepOptions = options;
+
+              if (
+                localContextWindow &&
+                !messageOverride &&
+                !compactedMidTurn &&
+                settings.enableContextCompaction !== false
+              ) {
+                const projectedTokens = await estimateAgentRequestTokens(
+                  systemPrompt,
+                  options.messages,
+                  allTools,
+                );
+                if (
+                  shouldTriggerCompaction(
+                    projectedTokens,
+                    localContextWindow,
+                    selectedModel.provider,
+                  )
+                ) {
+                  compactBeforeNextStep = true;
+                }
+              }
 
               if (
                 !messageOverride &&

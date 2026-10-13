@@ -4,6 +4,8 @@ import { Message } from "@/ipc/types";
 import { getErrorMessage } from "@ai-sdk/provider";
 
 import { findLanguageModel } from "./findLanguageModel";
+import { getLmStudioBaseUrl } from "./lm_studio_utils";
+import { asSchema, type ModelMessage, type ToolSet } from "ai";
 
 // Estimate tokens (4 characters per token)
 export const estimateTokens = (text: string): number => {
@@ -67,6 +69,28 @@ const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 export async function getContextWindow(model?: LargeLanguageModel) {
   const selectedModel = model ?? readSettings().selectedModel;
+  if (selectedModel.provider === "lmstudio") {
+    // The architecture maximum is not the context allocated to a loaded model.
+    // Read the server on each lookup so reloading with a different limit takes effect.
+    try {
+      const response = await fetch(`${getLmStudioBaseUrl()}/api/v0/models`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.ok) {
+        const { data } = await response.json();
+        const loaded = data?.find(
+          (entry: { id: string; state: string }) =>
+            entry.id === selectedModel.name && entry.state === "loaded",
+        );
+        const context = loaded?.loaded_context_length;
+        if (Number.isSafeInteger(context) && context > 0) return context;
+      }
+    } catch {
+      // Older servers may not expose allocation metadata. Use a conservative
+      // local fallback rather than the 128K cloud default.
+    }
+    return 32_768;
+  }
   const modelOption = await findLanguageModel(selectedModel);
   return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
 }
@@ -101,9 +125,34 @@ export function getCompactionThreshold(
   contextWindow: number,
   provider: string,
 ): number {
+  if (provider === "lmstudio" || provider === "ollama") {
+    return Math.floor(contextWindow * 0.75);
+  }
   const cap =
     provider === "google" ? 190_000 : provider === "openai" ? 220_000 : 250_000;
   return Math.min(cap, Math.max(0, contextWindow - 25_000));
+}
+
+/** Include the system prompt and actual tool schemas, even before usage exists. */
+export async function estimateAgentRequestTokens(
+  system: string,
+  messages: ModelMessage[],
+  tools: ToolSet,
+): Promise<number> {
+  const declarations = await Promise.all(
+    Object.entries(tools).map(async ([name, tool]) => ({
+      name,
+      description: tool.description,
+      parameters: await asSchema(tool.inputSchema).jsonSchema,
+    })),
+  );
+  // Local tokenizers vary, especially for code and JSON. Use three characters
+  // per token plus framing headroom rather than the four-character UI estimate.
+  return (
+    Math.ceil(
+      JSON.stringify({ system, messages, tools: declarations }).length / 3,
+    ) + 512
+  );
 }
 
 /**

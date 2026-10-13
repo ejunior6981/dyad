@@ -2501,6 +2501,77 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Context compaction setting", () => {
+    it("compacts an oversized LM Studio history before the first request without a pending flag", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({
+        selectedModel: { provider: "lmstudio", name: "local-qwen" },
+      });
+      mockChatData = buildTestChat({
+        messages: [
+          { id: 1, role: "user", content: "old task" },
+          { id: 2, role: "assistant", content: "x".repeat(100_000) },
+          { id: 3, role: "user", content: "current task" },
+        ],
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "local-qwen",
+                state: "loaded",
+                max_context_length: 262_144,
+                loaded_context_length: 32_768,
+              },
+            ],
+          }),
+        ),
+      );
+      mockPerformCompaction.mockImplementation(async () => {
+        mockChatData = buildTestChat({
+          messages: [
+            {
+              id: 20,
+              role: "assistant",
+              content: "compact summary",
+              isCompactionSummary: true,
+              createdAt: new Date("2025-01-01T00:00:00Z"),
+            },
+            {
+              id: 3,
+              role: "user",
+              content: "current task",
+              createdAt: new Date("2025-01-01T00:01:00Z"),
+            },
+          ],
+        });
+        return { success: true, summary: "compact summary" };
+      });
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "done" },
+      ]);
+      try {
+        await handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "current task" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        );
+        expect(mockPerformCompaction).toHaveBeenCalledOnce();
+        expect(getMessagesByChannel("chat:response:error")).toEqual([]);
+        expect(vi.mocked(streamText).mock.calls[0][0].messages).toEqual([
+          { role: "assistant", content: "compact summary" },
+          { role: "user", content: "current task" },
+        ]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
     it("builds model history from the refreshed chat after pending compaction", async () => {
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });

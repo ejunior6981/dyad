@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { jsonSchema } from "ai";
 
 import {
   getCompactionThreshold,
+  getContextWindow,
+  estimateAgentRequestTokens,
   getTemperature,
   estimateToolResultTokens,
   shouldTriggerCompaction,
@@ -17,6 +20,86 @@ vi.mock("@/ipc/utils/findLanguageModel", () => ({
 }));
 
 const mockFindLanguageModel = vi.mocked(findLanguageModel);
+afterEach(() => vi.unstubAllGlobals());
+
+describe("LM Studio request budgeting", () => {
+  const model = { provider: "lmstudio", name: "qwen/qwen3.5-9b" };
+  it("uses the loaded allocation rather than the architecture maximum and refreshes after reload", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const context of [32_768, 65_536]) {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: "other", state: "loaded", loaded_context_length: 4096 },
+            {
+              id: model.name,
+              state: "loaded",
+              max_context_length: 262_144,
+              loaded_context_length: context,
+            },
+          ],
+        }),
+      });
+      await expect(getContextWindow(model)).resolves.toBe(context);
+    }
+  });
+  it.each([undefined, -1, 0, "65536", 3.5])(
+    "falls back conservatively for invalid metadata %s",
+    async (context) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            data: [
+              {
+                id: model.name,
+                state: "loaded",
+                max_context_length: 262_144,
+                loaded_context_length: context,
+              },
+            ],
+          }),
+        }),
+      );
+      await expect(getContextWindow(model)).resolves.toBe(32_768);
+    },
+  );
+  it("handles an unavailable metadata endpoint", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    await expect(getContextWindow(model)).resolves.toBe(32_768);
+  });
+  it("counts tool schemas and system instructions before the first model response", async () => {
+    const small = await estimateAgentRequestTokens(
+      "short",
+      [{ role: "user", content: "hello" }],
+      {},
+    );
+    const large = await estimateAgentRequestTokens(
+      "x".repeat(30_000),
+      [{ role: "user", content: "hello" }],
+      {
+        search: {
+          description: "search",
+          inputSchema: jsonSchema({
+            type: "object",
+            description: "x".repeat(45_000),
+          }),
+        },
+      },
+    );
+    expect(small).toBeLessThan(1000);
+    expect(large).toBeGreaterThan(25_000);
+    expect(shouldTriggerCompaction(large, 32_768, "lmstudio")).toBe(true);
+  });
+  it("reserves proportional headroom for small local contexts", () => {
+    expect(getCompactionThreshold(32_768, "lmstudio")).toBe(24_576);
+    expect(getCompactionThreshold(65_536, "lmstudio")).toBe(49_152);
+    expect(getCompactionThreshold(8192, "ollama")).toBe(6144);
+  });
+});
 
 describe("estimateToolResultTokens", () => {
   it("estimates provider-bound tool result envelopes without recounting input", () => {

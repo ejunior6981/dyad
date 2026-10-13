@@ -5,7 +5,7 @@ This fork keeps `origin` pointed at `ejunior6981/dyad`, `upstream` at
 
 ## Installed Windows build
 
-The locally built `1.19.1-local.1` release is installed through the normal
+The locally built `1.19.1-local.2` release is installed through the normal
 Dyad Windows installer and uses the existing `%APPDATA%\dyad` data directory.
 Existing apps, chats, and messages were checked against a complete pre-install
 backup under `%LOCALAPPDATA%\dyad-local-backups`; database integrity passed.
@@ -14,17 +14,22 @@ SearXNG, and the verified ComfyUI workflow. Explorer, Implementer, and advanced
 subagent access are enabled. Automatic app updates are off so upstream binaries
 cannot overwrite the customization. Merge source updates and rebuild manually.
 
-Qwen 3.5 9B is loaded with a 32,768-token context and one parallel inference
+Qwen 3.5 9B is loaded with a 49,152-token context and one parallel inference
 slot to leave memory available for ComfyUI and BGE-M3. The old 166K context
-with four slots caused a real image-render memory failure. The 32K configuration
-passed native tool calls plus real web search, embedding retrieval, and image
-generation checks. Its previous LM Studio model preset was backed up before
+with four slots caused a real image-render memory failure. The earlier 32K
+configuration was too small for a full Agent request (35,230 prompt tokens).
+The 64K trial accepted a 36K prompt but left insufficient Windows committed
+memory for the embedding service, so the saved configuration uses 48K.
+Dyad now reads LM Studio's actual loaded context instead of assuming 128K,
+uses a 75% local compaction threshold, and estimates system instructions,
+tool schemas, and history before the first request and subsequent steps.
+Its previous LM Studio model preset was backed up before
 changing the saved context default.
 
 To restore this model load after restarting LM Studio:
 
 ```powershell
-lms load qwen/qwen3.5-9b --context-length 32768 --parallel 1 --gpu max --identifier qwen/qwen3.5-9b --yes
+lms load qwen/qwen3.5-9b --context-length 49152 --parallel 1 --gpu max --identifier qwen/qwen3.5-9b --yes
 ```
 
 These are physical model context/concurrency settings, independent of Basic
