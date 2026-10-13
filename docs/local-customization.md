@@ -43,9 +43,26 @@ to 4,000 chunks of roughly 3,000 characters each. Indexing requests are batched,
 and scoring yields to the main event loop. This is intended for ordinary app
 projects; larger projects will need a worker and a database-backed index.
 
-The existing Basic Agent message quota, other Pro feature gates, hosted search,
-and image-generation tools are unchanged in this first implementation. Local
-search failures never fall back to a paid service.
+## Full Agent on local models
+
+LM Studio and Ollama sessions now use full Agent capabilities without the
+Basic Agent daily message quota. The model dropdown shows Agent, cached quota
+errors do not block local chats, and local turns do not reserve or consume
+Basic Agent quota. Switching to an unpaid cloud model retains the upstream
+quota behavior.
+
+Explorer, Reviewer, Implementer, and advanced subagent controls are available
+through the existing Sub-agents settings. Child agents use the same local
+model as the accepted root turn. Local inference and subagent inference never
+check or report Dyad credits, even when old Pro credentials remain in settings.
+These request-only overrides do not modify the stored Pro configuration.
+
+Hosted search, image generation, history research, voice transcription, and
+the hosted shell safety reviewer still require their respective backends.
+Local Agent does not expose those tools through fake Pro credentials. Existing
+tool approvals, Ask/Plan read-only boundaries, and the configurable per-turn
+step limits remain in place; these are also part of full Agent operation.
+Local search failures never fall back to a paid service.
 
 ## Development and checks
 
@@ -89,4 +106,4 @@ git push origin custom
 ```
 
 Future work: local SearXNG search and page extraction, then ComfyUI image
-generation, followed by remaining local feature gates and quota handling.
+generation and replacements for the remaining hosted tools.

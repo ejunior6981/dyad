@@ -21,7 +21,7 @@ export function getExploreCodeAvailabilityForAppPath(
   reason: string | null;
   tsconfigPath: string | null;
 } {
-  if (!ctx.isDyadPro) {
+  if (!(ctx.fullAgentAccess ?? ctx.isDyadPro)) {
     return {
       enabled: false,
       reason: "dyad_pro_required",

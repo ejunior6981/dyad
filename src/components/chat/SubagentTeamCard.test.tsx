@@ -42,9 +42,13 @@ vi.mock("@/hooks/useStreamChat", () => ({
   useStreamChat: () => ({ streamMessage: mocks.streamMessage }),
 }));
 
+vi.mock("@/hooks/useChatMode", () => ({
+  useChatMode: () => ({ selectedModel: undefined }),
+}));
+
 vi.mock("@/lib/schemas", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/schemas")>()),
-  isDyadProEnabled: () => true,
+  hasFullAgentAccess: () => true,
 }));
 
 vi.mock("@/lib/toast", () => ({ showError: mocks.showError }));

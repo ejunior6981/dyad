@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc, type FreeAgentQuotaStatus } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "./useSettings";
-import { isDyadProEnabled } from "@/lib/schemas";
+import { hasFullAgentAccess, type LargeLanguageModel } from "@/lib/schemas";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 
 const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
@@ -13,18 +13,20 @@ const TEST_STALE_TIME_MS = 500;
 /**
  * Hook to get the free agent quota status for non-Pro users.
  *
- * - Only fetches for non-Pro users (Pro users have unlimited access)
+ * - Only fetches for cloud sessions without full Agent access
  * - Refetches every 30 minutes to update the UI when quota resets
  * - Returns quota status including messages used, limit, and time until reset
  */
-export function useFreeAgentQuota() {
+export function useFreeAgentQuota(model?: LargeLanguageModel | null) {
   const { settings } = useSettings();
   const queryClient = useQueryClient();
-  const isPro = settings ? isDyadProEnabled(settings) : false;
+  const isPro = settings
+    ? hasFullAgentAccess(settings, model ?? settings.selectedModel)
+    : false;
   const isTestMode = settings?.isTestMode ?? false;
 
   const {
-    data: quotaStatus,
+    data: cachedQuotaStatus,
     isLoading,
     error,
   } = useQuery<FreeAgentQuotaStatus, Error, FreeAgentQuotaStatus>({
@@ -46,10 +48,14 @@ export function useFreeAgentQuota() {
     });
   };
 
+  // Custom fork: disabled queries can retain an exhausted cloud quota in cache.
+  const quotaStatus = isPro ? undefined : cachedQuotaStatus;
+
   return {
     quotaStatus,
-    isLoading,
-    error,
+    isLoading: !isPro && isLoading,
+    error: isPro ? null : error,
+    isUnlimited: isPro,
     invalidateQuota,
     // Convenience properties for easier consumption
     isQuotaExceeded: quotaStatus?.isQuotaExceeded ?? false,

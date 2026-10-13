@@ -1,4 +1,5 @@
 import { type ChatMode, type UserSettings } from "@/lib/schemas";
+import { withoutLocalHostedBilling } from "@/lib/agentModelSettings";
 import {
   normalizeStoredChatMode,
   resolveChatMode,
@@ -34,6 +35,8 @@ export async function resolveChatModeForTurn({
   requestedChatMode?: ChatMode | null;
   settings?: UserSettings;
 }): Promise<ChatModeResolution & { settings: UserSettings }> {
+  // Custom fork: expose local Agent capabilities with no hosted billing key.
+  settings = withoutLocalHostedBilling(settings);
   const modeForTurn =
     requestedChatMode === undefined ? storedChatMode : requestedChatMode;
   const normalizedChatMode = normalizeStoredChatMode(modeForTurn);

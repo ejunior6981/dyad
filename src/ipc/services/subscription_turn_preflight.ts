@@ -1,5 +1,6 @@
 import {
   isDyadProEnabled,
+  isLocalModelSelection,
   type ModelSelection,
   type UserSettings,
 } from "@/lib/schemas";
@@ -30,6 +31,10 @@ export async function preflightSubscriptionTurn(
   externalModelAdmission?: ExternalModelAdmission;
 }> {
   signal.throwIfAborted();
+  // Custom fork: local models have no Dyad credit admission or usage reports.
+  if (isLocalModelSelection(model)) {
+    return { model: { ...model, connection: "api-key" } };
+  }
   if (
     model.provider === "claude-code" &&
     !settings.enableClaudeCodeSubscription

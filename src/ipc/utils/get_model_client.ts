@@ -193,6 +193,32 @@ export async function getModelClient(
         settings.modelEffortPreferences?.[getModelPreferenceKey(selectedModel)],
     }));
   const model = getAutoSidekickRuntimeModel(selectedModel);
+  // Custom fork: local inference never uses Dyad credentials or billing,
+  // even when an older settings snapshot still contains a Pro key.
+  if (model.provider === "lmstudio" || model.provider === "ollama") {
+    const providerConfig = (await getLanguageModelProviders()).find(
+      (provider) => provider.id === model.provider,
+    );
+    if (!providerConfig) {
+      throw new DyadError(
+        `Configuration not found for provider: ${model.provider}`,
+        DyadErrorKind.NotFound,
+      );
+    }
+    const runtimeModel = {
+      ...selectedModelSelection,
+      connection: "api-key" as const,
+    };
+    return {
+      ...getRegularModelClient(
+        model,
+        { ...settings, enableDyadPro: false },
+        providerConfig,
+      ),
+      runtimeModel,
+      isEngineEnabled: false,
+    };
+  }
   if (selectedModelSelection.connection === "pro" && !settings.enableDyadPro)
     throw new DyadError(
       "Enable Dyad Pro before using Pro credits.",

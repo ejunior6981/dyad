@@ -178,7 +178,7 @@ describe("getModelClient", () => {
   });
 
   test.each(["custom", "lmstudio", "ollama"])(
-    "reports %s streaming usage only with Pro enabled",
+    "reports %s streaming usage only for hosted-billed custom providers",
     async (provider) => {
       for (const enableDyadPro of [true, false]) {
         const reports = vi.fn<typeof fetch>(async () =>
@@ -235,11 +235,12 @@ describe("getModelClient", () => {
           expect(JSON.stringify(providerHeaders)).not.toContain("test-pro");
           if (provider === "custom")
             expect(JSON.stringify(providerHeaders)).toContain("test-custom");
-          expect(reports).toHaveBeenCalledTimes(enableDyadPro ? 1 : 0);
+          const shouldBill = enableDyadPro && provider === "custom";
+          expect(reports).toHaveBeenCalledTimes(shouldBill ? 1 : 0);
           expect(requestBody.stream_options).toEqual(
-            enableDyadPro ? { include_usage: true } : undefined,
+            shouldBill ? { include_usage: true } : undefined,
           );
-          if (enableDyadPro)
+          if (shouldBill)
             expect(
               JSON.parse(String(reports.mock.calls[0][1]?.body)),
             ).toMatchObject({

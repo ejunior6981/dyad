@@ -14,7 +14,7 @@ import {
 } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { getModelClient } from "@/ipc/utils/get_model_client";
-import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
+import { getAgentModelSettings } from "@/lib/agentModelSettings";
 import { getAiHeaders, getProviderOptions } from "@/ipc/utils/provider_options";
 import { withLock } from "@/ipc/utils/lock_utils";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
@@ -31,7 +31,12 @@ import type {
   SubagentThreadSummary,
 } from "@/ipc/types";
 import { isSubagentAcceptingMessages, isSubagentActive } from "@/ipc/types";
-import { isDyadProEnabled, type UserSettings } from "@/lib/schemas";
+import {
+  hasFullAgentAccess,
+  isDyadProEnabled,
+  isLocalModelSelection,
+  type UserSettings,
+} from "@/lib/schemas";
 import { getChatInferenceSettings } from "@/ipc/services/chat_inference_settings";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
@@ -336,7 +341,7 @@ export async function settleAllSubagentsForReset(): Promise<() => void> {
 export async function listSubagents(
   chatId: number,
 ): Promise<SubagentThreadSummary[]> {
-  assertPro();
+  await assertAgentAccess(chatId);
   const rows = await db.query.agentThreads.findMany({
     where: eq(agentThreads.chatId, chatId),
     orderBy: [desc(agentThreads.createdAt)],
@@ -345,7 +350,7 @@ export async function listSubagents(
 }
 
 export async function getSubagentMessages(chatId: number, threadId: string) {
-  assertPro();
+  await assertAgentAccess(chatId);
   await getOwnedThread(chatId, threadId);
   const rows = await db.query.agentMessages.findMany({
     where: eq(agentMessages.threadId, threadId),
@@ -369,7 +374,7 @@ export async function getSubagentActivities(
   chatId: number,
   threadId: string,
 ): Promise<SubagentActivity[]> {
-  assertPro();
+  await assertAgentAccess(chatId);
   await getOwnedThread(chatId, threadId);
   const rows = await db.query.agentActivities.findMany({
     where: eq(agentActivities.threadId, threadId),
@@ -460,7 +465,11 @@ export async function spawnModelSubagent(params: {
     mutationActivityOwner?: MutationActivityOwner;
   }) => ToolSet;
 }): Promise<string> {
-  assertPro(params.persona);
+  await assertAgentAccess(
+    params.ctx.chatId,
+    params.persona,
+    params.ctx.inferenceSettings,
+  );
   assertPersonaEnabled(
     params.persona,
     params.ctx.canUseImplementerSubagent === true,
@@ -571,7 +580,7 @@ export async function startReview(params: {
   invocationSource: "review_button" | "auto_review";
   allowWhenAutoReviewDisabled?: boolean;
 }): Promise<SubagentThreadSummary> {
-  assertPro("reviewer");
+  await assertAgentAccess(params.chatId, "reviewer");
   await preflightPersonaModel("reviewer", params.chatId);
   if (
     params.invocationSource === "auto_review" &&
@@ -677,7 +686,7 @@ export async function cancelSubagent(
   chatId: number,
   threadId: string,
 ): Promise<void> {
-  assertPro();
+  await assertAgentAccess(chatId);
   const thread = await getOwnedThread(chatId, threadId);
   if (
     !SUBAGENT_NONTERMINAL_STATUSES.includes(
@@ -732,7 +741,7 @@ export async function skipReviewAutoFix(
   threadId: string,
   remediationFailed = false,
 ): Promise<void> {
-  assertPro("reviewer");
+  await assertAgentAccess(chatId, "reviewer");
   const thread = await getOwnedThread(chatId, threadId);
   if (remediationFailed && thread.status === "fixing_findings") {
     const result = await applyThreadLifecycle(thread, {
@@ -773,7 +782,7 @@ export async function buildFixFindingsPrompt(
   threadId: string,
   remediationSource: "fix_button" | "auto_fix" | "queued_message_override",
 ): Promise<string> {
-  assertPro("reviewer");
+  await assertAgentAccess(chatId, "reviewer");
   const thread = await getOwnedThread(chatId, threadId);
   if (
     thread.persona !== "reviewer" ||
@@ -900,8 +909,8 @@ export async function runAutoReviewBarrier(params: {
   prompt?: string;
 }> {
   params.deadlineAt ??= Date.now() + AUTO_REVIEW_BARRIER_MAX_WAIT_MS;
-  const settings = readSettings();
-  const isPro = isDyadProEnabled(settings);
+  const settings = await getChatInferenceSettings(params.chatId);
+  const isPro = hasFullAgentAccess(settings);
   if ((!settings.enableAutoReview && !params.verification) || !isPro) {
     return { outcome: "skipped" };
   }
@@ -1107,7 +1116,7 @@ export async function sendSubagentMessage(
   content: string,
   abortSignal?: AbortSignal,
 ): Promise<void> {
-  assertPro();
+  await assertAgentAccess(chatId);
   return subagentDisposalRegistry.withAdmission(chatId, () =>
     sendSubagentMessageAdmitted(chatId, threadId, content, abortSignal),
   );
@@ -1157,7 +1166,11 @@ export async function followupSubagent(
     }) => ToolSet;
   },
 ): Promise<SubagentPersona> {
-  assertPro();
+  await assertAgentAccess(
+    chatId,
+    undefined,
+    currentTurn?.ctx.inferenceSettings,
+  );
   return subagentDisposalRegistry.withAdmission(chatId, () =>
     followupSubagentAdmitted(chatId, threadId, assignment, currentTurn),
   );
@@ -1300,7 +1313,7 @@ export async function waitForSubagents(
   abortSignal?: AbortSignal,
   timeoutMs = ROOT_FINALIZATION_MAX_WAIT_MS,
 ): Promise<SubagentThreadSummary[]> {
-  assertPro();
+  await assertAgentAccess(chatId);
   const deadlineAt = Date.now() + timeoutMs;
   const uniqueIds = [...new Set(threadIds)];
   await Promise.all(uniqueIds.map((id) => getOwnedThread(chatId, id)));
@@ -1561,7 +1574,15 @@ async function runThread(
     controller,
     actorRunId: mutationOwner?.actorRunId,
   });
-  const entitlementWatcher = watchEntitlement(threadId, controller);
+  const inferenceSettings = await getChatInferenceSettings(
+    thread.chatId,
+    rootCtx.inferenceSettings,
+  );
+  const entitlementWatcher = watchEntitlement(
+    threadId,
+    controller,
+    inferenceSettings,
+  );
   const claimedExplorerMessageIds = new Set<number>();
   try {
     assertPersonaEnabled(
@@ -1662,7 +1683,9 @@ async function runThread(
     if (controller.signal.aborted) return;
     await finishThread(
       threadId,
-      isDyadProEnabled(readSettings()) ? "failed" : "entitlement_revoked",
+      hasActiveAgentAccess(inferenceSettings)
+        ? "failed"
+        : "entitlement_revoked",
       null,
       errorMessage(error),
     );
@@ -1710,7 +1733,12 @@ async function runReview(
   const controller = new AbortController();
   let shouldContinue = false;
   abortControllers.set(threadId, { controller });
-  const entitlementWatcher = watchEntitlement(threadId, controller);
+  const inferenceSettings = await getChatInferenceSettings(thread.chatId);
+  const entitlementWatcher = watchEntitlement(
+    threadId,
+    controller,
+    inferenceSettings,
+  );
   try {
     if (!(await updateStatus(threadId, "running"))) return;
     const reviewResult = await runModel({
@@ -1718,6 +1746,7 @@ async function runReview(
       chatId: thread.chatId,
       appId,
       persona: "reviewer",
+      inferenceSettings,
       assignment: `Review this exact diff. ${STRUCTURED_REVIEW_INSTRUCTIONS}${followup ? `\n\nFollow-up request: ${followup}` : ""}\n\nFiles: ${target.files.join(", ")}\nExcluded: ${target.exclusions.join(", ") || "none"}\n\n${target.diff}`,
       tools: {},
       abortSignal: controller.signal,
@@ -1752,7 +1781,9 @@ async function runReview(
     if (controller.signal.aborted) return;
     await finishThread(
       threadId,
-      isDyadProEnabled(readSettings()) ? "failed" : "entitlement_revoked",
+      hasActiveAgentAccess(inferenceSettings)
+        ? "failed"
+        : "entitlement_revoked",
       null,
       errorMessage(error),
     );
@@ -1778,7 +1809,11 @@ type RunModelParams = {
 async function runModel(
   params: RunModelParams,
 ): Promise<{ text: string; hitStepLimit: boolean }> {
-  assertPro(params.persona);
+  await assertAgentAccess(
+    params.chatId,
+    params.persona,
+    params.inferenceSettings,
+  );
   const claimedRootMessageIds = new Set<number>();
   const settings = await personaModelSettings(
     params.persona,
@@ -1811,7 +1846,7 @@ async function runModel(
     messages: history,
     tools: params.tools,
     prepareStep: async ({ messages: stepMessages }) => {
-      assertPro(params.persona);
+      await assertAgentAccess(params.chatId, params.persona, settings);
       const pending = await db.query.agentMessages.findMany({
         where: and(
           eq(agentMessages.threadId, params.threadId),
@@ -1910,15 +1945,11 @@ async function personaModelSettings(
 ) {
   const defaults = MODELS[persona];
   const settings = await getChatInferenceSettings(chatId, acceptedSettings);
-  return {
-    ...getAuxiliarySettings(settings),
-    selectedModel: {
-      provider: defaults.provider,
-      name: defaults.name,
-      effortLevel: defaults.effort,
-    },
-    thinkingBudget: defaults.effort,
-  };
+  return getAgentModelSettings(settings, {
+    provider: defaults.provider,
+    name: defaults.name,
+    effortLevel: defaults.effort,
+  });
 }
 
 async function preflightPersonaModel(
@@ -1932,15 +1963,18 @@ async function preflightPersonaModel(
     chatId,
     acceptedSettings,
   );
-  const catalog = await getBuiltinLanguageModelCatalog();
-  const available = catalog.modelsByProvider[defaults.provider]?.some(
-    (model) => model.apiName === defaults.name,
-  );
-  if (!available) {
-    throw new DyadError(
-      `${persona} requires ${defaults.name}, which is not currently available. Check your Dyad Pro model access and try again.`,
-      DyadErrorKind.Precondition,
+  // Local helpers do not need the hosted model catalog or a Pro model.
+  if (!isLocalModelSelection(settings.selectedModel)) {
+    const catalog = await getBuiltinLanguageModelCatalog();
+    const available = catalog.modelsByProvider[defaults.provider]?.some(
+      (model) => model.apiName === defaults.name,
     );
+    if (!available) {
+      throw new DyadError(
+        `${persona} requires ${defaults.name}, which is not currently available. Check your Dyad Pro model access and try again.`,
+        DyadErrorKind.Precondition,
+      );
+    }
   }
 
   try {
@@ -2322,12 +2356,25 @@ function assertPersonaEnabled(
   }
 }
 
-function assertPro(persona?: SubagentPersona): void {
-  if (!isDyadProEnabled(readSettings())) {
+// Custom fork: use the accepted local model, while retaining live paid revocation.
+function hasActiveAgentAccess(settings: UserSettings): boolean {
+  return (
+    isLocalModelSelection(settings.selectedModel) ||
+    isDyadProEnabled(readSettings())
+  );
+}
+
+async function assertAgentAccess(
+  chatId: number,
+  persona?: SubagentPersona,
+  acceptedSettings?: UserSettings,
+): Promise<void> {
+  const settings = await getChatInferenceSettings(chatId, acceptedSettings);
+  if (!hasActiveAgentAccess(settings)) {
     throw new DyadError(
       persona
-        ? `${persona} sub-agents require Dyad Pro.`
-        : "Sub-agents require Dyad Pro.",
+        ? `${persona} sub-agents require a local model or Dyad Pro.`
+        : "Sub-agents require a local model or Dyad Pro.",
       DyadErrorKind.Auth,
     );
   }
@@ -2695,9 +2742,10 @@ async function cleanupFollowupRunnerIfIdle(threadId: string): Promise<void> {
 function watchEntitlement(
   threadId: string,
   controller: AbortController,
+  settings: UserSettings,
 ): ReturnType<typeof setInterval> {
   const timer = setInterval(() => {
-    if (isDyadProEnabled(readSettings())) return;
+    if (hasActiveAgentAccess(settings)) return;
     clearInterval(timer);
     controller.abort();
     void finishThread(

@@ -19,6 +19,7 @@ import { AutoFixReviewIssuesSwitch } from "@/components/settings/SubagentSetting
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings } from "@/hooks/useSettings";
+import { useChatMode } from "@/hooks/useChatMode";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   ipc,
@@ -27,7 +28,7 @@ import {
   type SubagentThreadSummary,
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
-import { isDyadProEnabled } from "@/lib/schemas";
+import { hasFullAgentAccess } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 import { setPendingReviewContinuation } from "@/hooks/subagentReviewContinuation";
 
@@ -47,6 +48,7 @@ export function SubagentTeamCard({
   hideInlineThreads?: boolean;
 }) {
   const { settings } = useSettings();
+  const { selectedModel } = useChatMode(chatId);
   const { streamMessage } = useStreamChat();
   const queryClient = useQueryClient();
   const queryKey = queryKeys.subagents.byChat({ chatId });
@@ -58,7 +60,9 @@ export function SubagentTeamCard({
     new Set(),
   );
   const [now, setNow] = useState(Date.now());
-  const isPro = settings ? isDyadProEnabled(settings) : false;
+  const isPro = settings
+    ? hasFullAgentAccess(settings, selectedModel ?? settings.selectedModel)
+    : false;
   const showReviewButton = showReviewAction && !!settings?.enableReviewButton;
   const query = useQuery({
     queryKey,
@@ -558,7 +562,10 @@ export function SubagentTeamCard({
                             <Wrench className="mr-1 h-4 w-4" />
                             Fix findings ({findingCount})
                           </Button>
-                          <AutoFixReviewIssuesSwitch compact />
+                          <AutoFixReviewIssuesSwitch
+                            compact
+                            model={selectedModel}
+                          />
                         </div>
                       )}
                   </div>

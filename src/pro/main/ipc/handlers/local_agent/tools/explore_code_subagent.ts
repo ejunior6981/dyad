@@ -1,4 +1,5 @@
-import { getAuxiliarySettings } from "@/lib/auxiliaryModel";
+import { getAgentModelSettings } from "@/lib/agentModelSettings";
+import { isLocalModelSelection } from "@/lib/schemas";
 import { withReferencedAppRead } from "./referenced_app_read";
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import log from "electron-log";
@@ -117,8 +118,12 @@ export async function runExploreCodeSubagent({
     ctx.chatId,
     ctx.inferenceSettings,
   );
-  assertDyadValueAvailable(storedSettings);
-  const auxiliaryModel = SUBAGENT_MODEL;
+  if (!isLocalModelSelection(storedSettings.selectedModel)) {
+    assertDyadValueAvailable(storedSettings);
+  }
+  const auxiliaryModel = isLocalModelSelection(storedSettings.selectedModel)
+    ? storedSettings.selectedModel
+    : SUBAGENT_MODEL;
   const selectedModel = await resolveModelSelection({
     model: auxiliaryModel,
     preferredEffortLevel:
@@ -126,7 +131,7 @@ export async function runExploreCodeSubagent({
         getModelPreferenceKey(auxiliaryModel)
       ],
   });
-  const settings = { ...getAuxiliarySettings(storedSettings), selectedModel };
+  const settings = getAgentModelSettings(storedSettings, selectedModel);
 
   const modelInfo = await getModelClient(
     auxiliaryModel,

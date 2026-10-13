@@ -132,6 +132,27 @@ describe("runExploreCodeSubagent", () => {
     }));
   });
 
+  it("uses the accepted local model for Explorer without a Pro key", async () => {
+    const ctx = createMockContext();
+    ctx.inferenceSettings = {
+      ...mocks.readSettings(),
+      enableDyadPro: false,
+      selectedModel: { provider: "lmstudio", name: "qwen3.5-9b" },
+    };
+    await runExploreCodeSubagent({
+      args: { query: "find save", intent: "locate" },
+      ctx,
+    });
+    expect(mocks.getModelClient).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "lmstudio", name: "qwen3.5-9b" }),
+      expect.objectContaining({
+        enableDyadPro: false,
+        selectedModel: expect.objectContaining({ provider: "lmstudio" }),
+      }),
+      expect.objectContaining({ provider: "lmstudio" }),
+    );
+  });
+
   it("finishes referenced-app exploration before a queued rename without nested read claims", async () => {
     const ctx = createMockContext();
     ctx.referencedApps = new Map([["other", "/tmp/other"]]);

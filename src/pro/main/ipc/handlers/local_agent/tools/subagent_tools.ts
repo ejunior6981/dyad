@@ -252,7 +252,7 @@ export const spawnAgentTool: ToolDefinition<
   usesEngineEndpoint: true,
   isEnabled: (ctx) =>
     Boolean(
-      ctx.isDyadPro &&
+      (ctx.fullAgentAccess ?? ctx.isDyadPro) &&
       (ctx.canUseExplorerSubagent || ctx.canUseImplementerSubagent) &&
       !ctx.subagentThreadId,
     ),
@@ -349,7 +349,9 @@ const threadIdsSchema = z.object({ thread_ids: z.array(z.string()).min(1) });
 
 function canUseAdvancedSubagentTools(ctx: AgentContext): boolean {
   return Boolean(
-    ctx.isDyadPro && ctx.canUseAdvancedSubagentTools && !ctx.subagentThreadId,
+    (ctx.fullAgentAccess ?? ctx.isDyadPro) &&
+    ctx.canUseAdvancedSubagentTools &&
+    !ctx.subagentThreadId,
   );
 }
 

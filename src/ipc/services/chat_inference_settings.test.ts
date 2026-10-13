@@ -17,6 +17,21 @@ const settings = {
 } as unknown as UserSettings;
 beforeEach(() => vi.resetAllMocks());
 
+it("uses a local chat selection even when the global model and credit preference are hosted", async () => {
+  mocks.settings.mockReturnValue({ ...settings, proModelUsage: "pro" });
+  mocks.chat.mockResolvedValue({
+    chatMode: "local-agent",
+    modelSelection: {
+      provider: "lmstudio",
+      name: "qwen",
+      effortLevel: "medium",
+    },
+  });
+  expect((await getChatInferenceSettings(1)).selectedModel.provider).toBe(
+    "lmstudio",
+  );
+});
+
 it.each(["build", "ask", "plan", "local-agent"] as const)(
   "resolves standalone auxiliary billing from stored %s rather than the default",
   async (mode) => {

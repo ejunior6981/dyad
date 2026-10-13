@@ -691,6 +691,20 @@ export function isDyadProEnabled(settings: UserSettings): boolean {
   return settings.enableDyadPro === true && hasDyadProKey(settings);
 }
 
+// Custom fork: local capabilities do not imply access to hosted Pro services.
+export function isLocalModelSelection(
+  model?: LargeLanguageModel | null,
+): boolean {
+  return model?.provider === "lmstudio" || model?.provider === "ollama";
+}
+
+export function hasFullAgentAccess(
+  settings: UserSettings,
+  model: LargeLanguageModel = settings.selectedModel,
+): boolean {
+  return isLocalModelSelection(model) || isDyadProEnabled(settings);
+}
+
 export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
 }
@@ -712,7 +726,7 @@ export function shouldShowPnpmMinimumReleaseAgeWarning(
 /**
  * Gets the effective default chat mode based on settings and Pro status.
  * - Explicit non-Agent defaults are always honored
- * - Pro users default to Agent
+ * - Pro users and local-model users default to Agent
  * - Non-Pro users default to Basic Agent; quota is enforced when sending
  * - Google-only users fall back to Build because free Gemini keys commonly
  *   have limits that are too restrictive for Agent mode
@@ -721,7 +735,7 @@ export function getEffectiveDefaultChatMode(
   settings: UserSettings,
   envVars: Record<string, string | undefined>,
 ): ChatMode {
-  const isPro = isDyadProEnabled(settings);
+  const isPro = hasFullAgentAccess(settings);
   const hasGoogleProviderSetup = isGoogleProviderSetup(settings, envVars);
   const hasNonGoogleProviderSetup = isNonGoogleProviderSetup(settings, envVars);
 
@@ -738,13 +752,13 @@ export function getEffectiveDefaultChatMode(
 /**
  * Determines if the current session is using Basic Agent mode (free tier with quota).
  * Basic Agent mode is when:
- * - User is NOT a Pro subscriber
+ * - User is NOT a Pro subscriber and is NOT using a local model
  * - User is using local-agent chat mode
  */
 export function isBasicAgentMode(settings: UserSettings): boolean {
   return (
     settings.selectedModel.provider !== "claude-code" &&
-    !isDyadProEnabled(settings) &&
+    !hasFullAgentAccess(settings) &&
     settings.selectedChatMode === "local-agent"
   );
 }

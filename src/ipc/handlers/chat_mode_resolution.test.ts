@@ -21,6 +21,21 @@ function makeFreeProSettings(
 }
 
 describe("resolveChatModeForTurn", () => {
+  it("disables hosted billing in the local turn snapshot without editing stored settings", async () => {
+    const settings = makeFreeProSettings({
+      selectedModel: { provider: "lmstudio", name: "qwen" },
+      enableDyadPro: true,
+      proModelUsage: "pro",
+      providerSettings: { auto: { apiKey: { value: "old-key" } } },
+    });
+    const resolved = await resolveChatModeForTurn({
+      storedChatMode: "local-agent",
+      settings,
+    });
+    expect(resolved.settings.enableDyadPro).toBe(false);
+    expect(resolved.settings.proModelUsage).toBe("api-key");
+    expect(settings.enableDyadPro).toBe(true);
+  });
   it("keeps automatic Free Pro chats out of Build mode", async () => {
     await expect(
       resolveChatModeForTurn({

@@ -83,6 +83,8 @@ export interface AgentContext {
   };
   /** Accepted root settings, including resolved mode and billing account. */
   inferenceSettings?: UserSettings;
+  /** Custom fork: local full-agent features, independent of paid engine access. */
+  fullAgentAccess?: boolean;
   /** Owner-scoped identity used to join only this root turn's mutations. */
   mutationActivityOwner?: MutationActivityOwner;
   event: IpcMainInvokeEvent;

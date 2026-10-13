@@ -11,6 +11,39 @@ import {
 } from "./tool_definitions";
 
 describe("Build mode tool profile", () => {
+  it("enables local subagent tools without exposing hosted image and web services", () => {
+    const ctx = {
+      isDyadPro: false,
+      fullAgentAccess: true,
+      canUseExplorerSubagent: true,
+      canUseImplementerSubagent: true,
+      canUseAdvancedSubagentTools: true,
+      inferenceSettings: {
+        selectedModel: { provider: "lmstudio", name: "qwen" },
+      },
+    } as import("./tools/types").AgentContext;
+    const tool = (name: string) =>
+      TOOL_DEFINITIONS.find((entry) => entry.name === name)!;
+    expect(shouldIncludeTool(tool("spawn_agent"), ctx)).toBe(true);
+    expect(shouldIncludeTool(tool("list_agents"), ctx)).toBe(true);
+    expect(shouldIncludeTool(tool("search_chats"), ctx)).toBe(true);
+    expect(shouldIncludeTool(tool("read_chat"), ctx)).toBe(true);
+    for (const name of [
+      "generate_image",
+      "web_search",
+      "web_fetch",
+      "web_crawl",
+      "explore_chat_history",
+    ]) {
+      expect(shouldIncludeTool(tool(name), ctx), name).toBe(false);
+    }
+    expect(
+      shouldIncludeTool(tool("spawn_agent"), ctx, { readOnly: true }),
+    ).toBe(false);
+    expect(
+      shouldIncludeTool(tool("spawn_agent"), ctx, { planModeOnly: true }),
+    ).toBe(false);
+  });
   it("allows local search without Pro and evaluates hosted billing per turn", () => {
     const tool = TOOL_DEFINITIONS.find(
       (entry) => entry.name === "code_search",

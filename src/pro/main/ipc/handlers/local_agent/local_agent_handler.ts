@@ -1,4 +1,5 @@
 import { recordShellReviewOutcome } from "./shell_review_history";
+import { withoutLocalHostedBilling } from "@/lib/agentModelSettings";
 import { shellExecutionGuidance } from "@/shared/shell_capability";
 import { SubscriptionBillingError } from "@/shared/subscription_billing_error";
 import {
@@ -37,6 +38,7 @@ import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 
 import {
   isDyadProEnabled,
+  hasFullAgentAccess,
   isBasicAgentMode,
   type ModelSelection,
   type UserSettings,
@@ -790,7 +792,7 @@ export async function handleLocalAgentStream(
     : chat.modelSelection
       ? await normalizeModelSelection(chat.modelSelection)
       : await resolveDefaultModelSelection(storedSettings);
-  settings = { ...storedSettings, selectedModel };
+  settings = withoutLocalHostedBilling({ ...storedSettings, selectedModel });
 
   // Check Pro status or Basic Agent mode
   // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
@@ -799,7 +801,7 @@ export async function handleLocalAgentStream(
     !buildMode &&
     !readOnly &&
     !planModeOnly &&
-    !isDyadProEnabled(settings) &&
+    !hasFullAgentAccess(settings) &&
     selectedModel.provider !== "claude-code" &&
     !isBasicAgentMode(settings)
   ) {
@@ -1042,20 +1044,21 @@ export async function handleLocalAgentStream(
         chat.messages,
       ),
       isDyadPro: isDyadProEnabled(settings),
+      fullAgentAccess: hasFullAgentAccess(settings),
       canUseExplorerSubagent:
         !buildMode &&
-        isDyadProEnabled(settings) &&
+        hasFullAgentAccess(settings) &&
         settings.enableExplorerSubagent !== false &&
         settings.agentToolConsents?.spawn_agent !== "never",
       canUseImplementerSubagent:
         !buildMode &&
-        isDyadProEnabled(settings) &&
+        hasFullAgentAccess(settings) &&
         isImplementerSubagentEnabled(settings) &&
         !readOnly &&
         !planModeOnly,
       canUseAdvancedSubagentTools:
         !buildMode &&
-        isDyadProEnabled(settings) &&
+        hasFullAgentAccess(settings) &&
         settings.enableAdvancedSubagents === true,
       runTypeScriptForWholeProject:
         settings.runTypeScriptForWholeProject === true,
@@ -2432,7 +2435,7 @@ export async function handleLocalAgentStream(
       !buildMode &&
       workspaceChanged &&
       !hitStepLimit &&
-      isDyadProEnabled(settings) &&
+      hasFullAgentAccess(settings) &&
       settings.enableAutoReview === true;
 
     // Send completion

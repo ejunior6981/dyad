@@ -37,6 +37,7 @@ import {
 import { extractMentionedAppsCodebasesFromPrompt } from "../utils/mention_apps";
 import {
   isDyadProEnabled,
+  hasFullAgentAccess,
   isBasicAgentMode,
   isLocalAgentBackedMode,
   isTurboEditsV2Enabled,
@@ -128,7 +129,7 @@ export function registerTokenCountHandlers() {
         hasSupabaseProject: !!chat.app?.supabaseProjectId,
         implementerAvailable:
           selectedChatMode === "local-agent" &&
-          isDyadProEnabled(settings) &&
+          hasFullAgentAccess(settings) &&
           isImplementerSubagentEnabled(settings),
         testingEnabled: !!chat.app?.testingEnabled,
         enableAppBlueprint,
@@ -193,6 +194,7 @@ export function registerTokenCountHandlers() {
       }
 
       const isDyadPro = isDyadProEnabled(settings);
+      const fullAgentAccess = hasFullAgentAccess(settings);
       const freeModelMode = isFreeProModel(selectedModel);
       const mcpToolDefs =
         selectedChatMode === "local-agent" ? getCachedMcpToolDefs() : [];
@@ -224,6 +226,8 @@ export function registerTokenCountHandlers() {
         enableAppBlueprint,
         freeModelMode,
         isDyadPro,
+        fullAgentAccess,
+        inferenceSettings: settings,
         frameworkType,
         supabaseProjectId: chat.app.supabaseProjectId,
         supabaseProviderToolsAvailable,
@@ -233,17 +237,17 @@ export function registerTokenCountHandlers() {
         testingEnabled: !!chat.app.testingEnabled,
         canUseExplorerSubagent:
           selectedChatMode !== "build" &&
-          isDyadPro &&
+          fullAgentAccess &&
           settings.enableExplorerSubagent !== false,
         canUseImplementerSubagent:
           selectedChatMode === "local-agent" &&
-          isDyadPro &&
+          fullAgentAccess &&
           isImplementerSubagentEnabled(settings),
         mcpToolDefs,
         suggestablePlugins,
         canUseAdvancedSubagentTools:
           selectedChatMode === "local-agent" &&
-          isDyadPro &&
+          fullAgentAccess &&
           settings.enableAdvancedSubagents === true,
         runTypeScriptForWholeProject:
           settings.runTypeScriptForWholeProject === true,

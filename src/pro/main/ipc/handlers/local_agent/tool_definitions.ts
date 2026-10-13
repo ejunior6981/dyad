@@ -506,6 +506,8 @@ export async function estimateAgentToolTokens({
   freeModelMode = false,
   enableAppBlueprint,
   isDyadPro,
+  fullAgentAccess = isDyadPro,
+  inferenceSettings,
   frameworkType,
   supabaseProjectId,
   supabaseProviderToolsAvailable = false,
@@ -529,6 +531,8 @@ export async function estimateAgentToolTokens({
   freeModelMode?: boolean;
   enableAppBlueprint: boolean;
   isDyadPro: boolean;
+  fullAgentAccess?: boolean;
+  inferenceSettings?: AgentContext["inferenceSettings"];
   frameworkType: AgentContext["frameworkType"];
   supabaseProjectId: string | null;
   supabaseProviderToolsAvailable?: boolean;
@@ -550,6 +554,8 @@ export async function estimateAgentToolTokens({
     appPath,
     freeModelMode,
     isDyadPro,
+    fullAgentAccess,
+    inferenceSettings,
     frameworkType,
     supabaseProjectId,
     supabaseProviderToolsAvailable,
@@ -772,7 +778,7 @@ export function shouldIncludeTool(
   if (options.freeModelMode && usesEngineEndpoint) {
     return false;
   }
-  if (tool.subagentOnly && !ctx.isDyadPro) {
+  if (tool.subagentOnly && !(ctx.fullAgentAccess ?? ctx.isDyadPro)) {
     return false;
   }
   // search_chats is superseded by the explore_chat_history sub-agent wherever

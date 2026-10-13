@@ -26,8 +26,7 @@ export async function getChatInferenceSettings(
   return {
     ...settings,
     selectedChatMode: mode,
-    ...(settings.proModelUsage === "api-key" && chat?.modelSelection
-      ? { selectedModel: chat.modelSelection }
-      : {}),
+    // Custom fork: preserve the actual chat model for local helpers too.
+    ...(chat?.modelSelection ? { selectedModel: chat.modelSelection } : {}),
   };
 }
